@@ -35,6 +35,7 @@ public class DishController {
     // ---- add ETL-node ---
     private final com.example.coordinator.service.ProcessingService processingService;
     private final RequestStorage storage;
+    private final com.example.coordinator.service.ConsensusService consensusService;
     // --- add ETL-node ----
     private final Path dishesFile = Path.of("data", "dishes.json");
     private final Object lock = new Object();
@@ -42,12 +43,13 @@ public class DishController {
     @Value("${admin.token}")
     private String adminToken;
 
-    public DishController(ObjectMapper objectMapper, RestTemplate restTemplate, com.example.coordinator.service.ProcessingService processingService, RequestStorage storage) {
+    public DishController(ObjectMapper objectMapper, RestTemplate restTemplate, com.example.coordinator.service.ProcessingService processingService, RequestStorage storage, com.example.coordinator.service.ConsensusService consensusService) {
         this.objectMapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         this.restTemplate = restTemplate;
         // ---- add ETL-node ---
         this.processingService = processingService;
         this.storage = storage;
+        this.consensusService = consensusService;
         // --- add ETL-node ----
         ensureDishesFile();
     }
@@ -69,13 +71,21 @@ public class DishController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Dish createDish(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Dish request) {
+    public Dish add(@RequestBody Dish request, @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        System.out.println("DishController received authHeader: " + authHeader);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("Failed: authHeader is null or doesn't start with Bearer");
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid Authorization header");
         }
         String token = authHeader.substring(7);
         if (!token.equals(adminToken)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid admin token");
+            System.out.println("Failed: token " + token + " does not match adminToken " + adminToken);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or missing token.");
+        }
+
+        if (!processingService.getIsLeader()) {
+            System.out.println("Not leader, redirecting ingest to leader.");
+            return consensusService.redirectIngest(request, authHeader);
         }
 
         String name = clean(request.name);
@@ -111,28 +121,23 @@ public class DishController {
             writeDishes(data);
 
             // ---- add ETL-node ---
-            if (processingService.getIsLeader()) {
-                com.example.shared.model.ETLQuery.Dish sharedDish = new com.example.shared.model.ETLQuery.Dish();
-                sharedDish.setId(dish.id);
-                sharedDish.setName(dish.name);
-                sharedDish.setIngredients(dish.ingredients);
-                sharedDish.setCookingMethod(dish.cookingMethod);
+            com.example.shared.model.ETLQuery.Dish sharedDish = new com.example.shared.model.ETLQuery.Dish();
+            sharedDish.setId(dish.id);
+            sharedDish.setName(dish.name);
+            sharedDish.setIngredients(dish.ingredients);
+            sharedDish.setCookingMethod(dish.cookingMethod);
 
-                UserRequest userRequest = new UserRequest();
-                userRequest.setId(dish.id);
-                userRequest.setType("INGEST");
-                userRequest.setState("received");
-                userRequest.setIngestDish(sharedDish);
-                userRequest.setTtl(LocalDateTime.now().plusMinutes(5));
+            UserRequest userRequest = new UserRequest();
+            userRequest.setId(dish.id);
+            userRequest.setType("INGEST");
+            userRequest.setState("received");
+            userRequest.setIngestDish(sharedDish);
+            userRequest.setTtl(LocalDateTime.now().plusMinutes(5));
 
-                storage.storeRequest(dish.id, userRequest);
-                processingService.addToQueue(dish.id);
-                storage.broadCastCopy(userRequest);
-                System.out.println("Dish ingest queued with job ID: " + dish.id);
-            } else {
-                System.err.println("Cannot ingest dish on follower node!");
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Cannot ingest dish on follower node. Please use the leader node.");
-            }
+            storage.storeRequest(dish.id, userRequest);
+            processingService.addToQueue(dish.id);
+            storage.broadCastCopy(userRequest);
+            System.out.println("Dish ingest queued with job ID: " + dish.id);
             // --- add ETL-node ----
 
             return dish;

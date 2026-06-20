@@ -39,7 +39,7 @@ os.environ["QDRANT_API_KEY"]    = os.getenv("QDRANT_API_KEY", "")
 
 # ── Clients (singletons — created once, reused everywhere) ────────────────────
 
-gemini_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite")
+gemini_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", max_retries=0)
 
 qdrant_client = QdrantClient(
     url="https://cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io:6333",
@@ -79,7 +79,7 @@ mealType         : main_course | side_dish | dessert | snack | breakfast |
                    soup_stew | salad | beverage | bread_pastry | sauce_condiment
 cuisine          : american | italian | asian | mexican | mediterranean |
                    french | indian | japanese | thai | chinese | spanish |
-                   greek | german | british | latin_american | middle_eastern | other
+                   greek | german | british | latin_american | middle_eastern | vietnamese | other
 cookingMethod    : baked | grilled | slow_cooker | stovetop | fried |
                    steamed | no_cook | pressure  (list — can have multiple)
 mainProtein      : chicken | beef | pork | salmon | shrimp | turkey | lamb |
@@ -359,7 +359,8 @@ def _build_context(
 
 
 _ANSWER_PROMPT = """\
-You are a helpful food assistant. Answer the user's request using ONLY the retrieved recipes below.
+You are a friendly, expert culinary advisor ("Epicure AI").
+Your job is to provide a brief, engaging recommendation based ONLY on the retrieved recipes below.
 
 User query: "{user_query}"
 
@@ -370,44 +371,19 @@ INSTRUCTIONS
 ════════════════════════════════════════════════════════
 
 General rules:
-- Answer using only retrieved data — never invent recipes, ingredients, or nutrition values
-- If nothing was retrieved, say so clearly and suggest the user broaden their search
-- Be friendly, concise, and scannable
-- Present up to 3 recipes, best match first (highest score)
+- Answer using only retrieved data — never invent recipes, ingredients, or nutrition values.
+- If nothing was retrieved, say so clearly and suggest the user broaden their search.
+- DO NOT output the full instructions or full ingredient lists. The UI already shows the full recipe cards.
+- Keep it to a short paragraph (2-4 sentences max).
+- Speak directly to the user in a warm, helpful tone.
 
-════════════════════════════════════════════════════════
-FORMAT BY QUERY TYPE
-════════════════════════════════════════════════════════
+Format:
+- Just write a flowing, conversational paragraph.
+- Mention the top 1 or 2 best matching recipes by name (in bold).
+- Briefly explain WHY they are a good fit for the user's query (e.g., matching their ingredients, hitting their macro goals, or fitting their cooking time).
 
-── Recipe queries ───────────────────────────────────────
-**[Recipe Name]**
-- Cook time   : [X min / X hrs / not specified]
-- Method      : [cooking method]
-- Diet        : [diet flags, or "none"]
-- Ingredients : [if user searched by ingredients on hand, list matched ones first, then the rest]
-- Instructions: [full instructions from the retrieved text]
-- Summary     : [one sentence]
-
-── Nutrition queries ("how many calories in X", "is X healthy", macros) ──
-**[Recipe Name]**
-Nutrition per serving: [X kcal | Xg protein | Xg fat | Xg carbs | Xg fiber | Xg sugar | Xmg sodium]
-[One-line interpretation, e.g. "High protein, moderate carbs — solid post-workout meal."]
-
-── Combined queries (recipe + nutrition constraint) ──────
-Lead with the recipe block, then append the nutrition line directly below it:
-**[Recipe Name]**
-- Cook time / Method / Diet / Ingredients / Instructions / Summary  (as above)
-Nutrition per serving: [X kcal | Xg protein | Xg fat | Xg carbs | Xg fiber | Xg sugar | Xmg sodium]
-[One-line interpretation]
-
-── "Is this healthy" queries ────────────────────────────
-Give a clear yes/no with a one-line reason based on the nutrition values.
-Then show the nutrition line for supporting evidence.
-
-════════════════════════════════════════════════════════
-SODIUM NOTE
-════════════════════════════════════════════════════════
-Sodium in retrieved data is in milligrams. Always display as Xmg — never convert to grams.
+Example output:
+"Based on the pork and tofu you have, I highly recommend **Spicy Pork and Tofu Stir-fry**. It's quick to make in just 20 minutes, packed with flavor, and gives you a great protein boost! Or, if you're looking for something lighter, the **Minced Pork Tofu Soup** is a perfect comforting choice."
 """
 
 _answer_chain = (

@@ -199,6 +199,38 @@ services:
       - frontend
       - coordinator-1
 
+  cluster-init:
+    image: alpine/curl
+    depends_on:
+      - coordinator-1
+      - coordinator-2
+      - coordinator-3
+      - recipe-node-1
+      - recipe-node-2
+      - recipe-node-3
+      - llm-node-1
+      - llm-node-2
+      - etl-node-1
+      - etl-node-2
+    command: >
+      sh -c "
+        echo 'Waiting for cluster to start (40s)...' &&
+        sleep 40 &&
+        echo 'Registering coordinators...' &&
+        curl -s -X POST 'http://coordinator-2:8081/follow?id=coordinator-1:8080' &&
+        curl -s -X POST 'http://coordinator-3:8082/follow?id=coordinator-1:8080' &&
+        echo 'Registering Recipe DB nodes...' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=recipe-node-1:8100&type=db' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=recipe-node-2:8101&type=db' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=recipe-node-3:8102&type=db' &&
+        echo 'Registering LLM nodes...' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=llm-node-1:8120&type=llm' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=llm-node-2:8121&type=llm' &&
+        echo 'Registering ETL nodes...' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=etl-node-1:8140&type=etl' &&
+        curl -s -X POST 'http://coordinator-1:8080/apply?id=etl-node-2:8141&type=etl' &&
+        echo 'Cluster successfully wired up!'
+      "
+
 volumes:
   qdrant_data:
-

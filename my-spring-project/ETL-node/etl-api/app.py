@@ -60,7 +60,7 @@ class Dish(BaseModel):
     id:            Optional[str]       = None
     name:          str                          # maps to → title
     ingredients:   list[str]
-    cookingMethod: Optional[str] = None         # maps to → instructions
+    cooking_method: Optional[str] = None         # maps to → instructions
 
 class DishesPayload(BaseModel):
     dishes: list[Dish]
@@ -79,14 +79,14 @@ def _dishes_to_recipe_json(dishes: list[Dish]) -> dict:
     -----------------       --------------------
     name                →   title
     ingredients         →   ingredients  (list[str])
-    cookingMethod       →   instructions
+    cooking_method      →   instructions
     id                  →   used as the recipe key (uuid4 if absent)
     """
     return {
         (dish.id or str(uuid.uuid4())): {
             "title":        dish.name,
             "ingredients":  dish.ingredients,
-            "instructions": dish.cookingMethod or "",
+            "instructions": dish.cooking_method or "",
             "picture_link": None,
         }
         for dish in dishes

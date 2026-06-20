@@ -153,7 +153,19 @@ public class ProcessingService {
 
                         LLMRequest llmRequest = new LLMRequest();
                         llmRequest.setUserQuery(request.getUserQuery());
-                        RecipeQuery result = sendToLLMNode(llmRequest);
+                        RecipeQuery result = null;
+                        try {
+                            result = sendToLLMNode(llmRequest);
+                        } catch (RuntimeException e) {
+                            if ("QUOTA_EXCEEDED".equals(e.getMessage())) {
+                                System.out.println("Quota exceeded. Failing fast.");
+                                request.setState("quota_exceeded");
+                                storage.storeRequest(id, request);
+                                storage.broadCastCopy(request);
+                                retryCounts.remove(id);
+                                continue;
+                            }
+                        }
 
                         if (result != null) {
                             request.setState("formatted");
@@ -167,6 +179,7 @@ public class ProcessingService {
                                 System.out.println("LLM decompose permanently failed for " + id);
                                 request.setState("error");
                                 storage.storeRequest(id, request);
+                                storage.broadCastCopy(request);
                                 retryCounts.remove(id);
                             } else {
                                 retryCounts.put(id, retries);
@@ -208,6 +221,7 @@ public class ProcessingService {
                                 System.out.println("Recipe DB search permanently failed for " + id);
                                 request.setState("error");
                                 storage.storeRequest(id, request);
+                                storage.broadCastCopy(request);
                                 retryCounts.remove(id);
                             } else {
                                 retryCounts.put(id, retries);
@@ -219,8 +233,19 @@ public class ProcessingService {
                     } else if (request.getState().equals("searched")) {
 
 
-                        
-                        String finalResult = sendToLLMAnswerNode(request);
+                        String finalResult = null;
+                        try {
+                            finalResult = sendToLLMAnswerNode(request);
+                        } catch (RuntimeException e) {
+                            if ("QUOTA_EXCEEDED".equals(e.getMessage())) {
+                                System.out.println("Quota exceeded. Failing fast.");
+                                request.setState("quota_exceeded");
+                                storage.storeRequest(id, request);
+                                storage.broadCastCopy(request);
+                                retryCounts.remove(id);
+                                continue;
+                            }
+                        }
                         if (finalResult != null) {
                             request.setState("done");
                             try {
@@ -242,6 +267,7 @@ public class ProcessingService {
                                 System.out.println("LLM answer generation permanently failed for " + id);
                                 request.setState("error");
                                 storage.storeRequest(id, request);
+                                storage.broadCastCopy(request);
                                 retryCounts.remove(id);
                             } else {
                                 retryCounts.put(id, retries);
@@ -357,9 +383,12 @@ public class ProcessingService {
                     return restTemplate.postForObject(targetUrl, entity, RecipeQuery.class);
                 } catch (Exception e) {
                     System.out.println("Calling llm service failed: " + e.getMessage());
+                    if (e.getMessage() != null && e.getMessage().contains("429")) {
+                        throw new RuntimeException("QUOTA_EXCEEDED", e);
+                    }
                     e.printStackTrace();
                 }
-            } while (attempt < 5);
+            } while (attempt < 2);
             return null;
         } else {
             System.out.println("No llm nodes found");
@@ -396,14 +425,6 @@ public class ProcessingService {
                 }
             } while (attempt < 3);
 
-            results.sort((r1, r2) -> {
-                Double s1 = r1.getScore() != null ? r1.getScore() : 0.0;
-                Double s2 = r2.getScore() != null ? r2.getScore() : 0.0;
-                return Double.compare(s2, s1);
-            });
-            if (results.size() > 10) {
-                return new ArrayList<>(results.subList(0, 10));
-            }
             return results;
         } else {
             System.out.println("No db nodes found");
@@ -426,10 +447,13 @@ public class ProcessingService {
 
                     return restTemplate.postForObject(targetUrl, entity, String.class);
                 } catch (Exception e) {
-                    System.out.println("Calling llm service failed.");
+                    System.out.println("Calling llm service failed: " + e.getMessage());
+                    if (e.getMessage() != null && e.getMessage().contains("429")) {
+                        throw new RuntimeException("QUOTA_EXCEEDED", e);
+                    }
                     e.printStackTrace();
                 }
-            } while (attempt < 5);
+            } while (attempt < 2);
             return null;
         } else {
             System.out.println("No llm nodes found");

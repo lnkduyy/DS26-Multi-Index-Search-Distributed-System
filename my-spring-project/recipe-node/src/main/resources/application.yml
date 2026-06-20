@@ -10,6 +10,6 @@ recipe-search:
     port: ${QDRANT_GRPC_PORT:6334}
     tls: ${QDRANT_TLS:false}
     api-key: ${QDRANT_API_KEY:}
-    collection: recipes_nutrition2
+    collection: recipes_nutrition2.3
     vector-name: ${QDRANT_RECIPE_VECTOR_NAME:}
     inference-model: ${QDRANT_INFERENCE_MODEL:sentence-transformers/all-minilm-l6-v2}

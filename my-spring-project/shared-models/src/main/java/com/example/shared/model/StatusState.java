@@ -5,5 +5,6 @@ public enum StatusState {
     PENDING,
     FAILED,
     TIMEOUT,
-    SUCCESS
+    SUCCESS,
+    QUOTA_EXCEEDED
 }

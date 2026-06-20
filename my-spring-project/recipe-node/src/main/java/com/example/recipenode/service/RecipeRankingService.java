@@ -52,11 +52,21 @@ public class RecipeRankingService {
         String rawQuery = query.getRecipeQuery() != null ? query.getRecipeQuery() : "";
         Set<String> queryTerms = tokenize(rawQuery);
 
+        // ---- duplicate remove ---
+        Set<String> seenNames = new java.util.HashSet<>();
+        // --- duplicate remove ----
+
         List<RecipeQueryResult> results = candidates.stream()
                 .map(candidate -> new RankedCandidate(candidate, payloadMapper.toDocument(candidate.payload())))
                 .filter(candidate -> matchesFilters(candidate.document(), filters))
                 .map(candidate -> toRankedResult(candidate, filters, queryTerms, rawQuery))
                 .sorted(Comparator.comparing(RecipeQueryResult::getScore, Comparator.nullsLast(Double::compareTo)).reversed())
+                // ---- duplicate remove ---
+                .filter(result -> {
+                    String name = result.getItemName() != null ? result.getItemName().toLowerCase(Locale.ROOT).trim() : "";
+                    return seenNames.add(name);
+                })
+                // --- duplicate remove ----
                 .limit(topK)
                 .toList();
 

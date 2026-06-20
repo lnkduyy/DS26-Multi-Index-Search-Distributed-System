@@ -60,7 +60,10 @@ def decompose(request: DecomposeRequest):
         json_text = llm.decompose_routing(request.user_query)
         return json.loads(json_text)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        err_msg = str(exc)
+        if "429" in err_msg or "quota" in err_msg.lower() or "RESOURCE_EXHAUSTED" in err_msg:
+            raise HTTPException(status_code=429, detail="Quota Exceeded") from exc
+        raise HTTPException(status_code=500, detail=err_msg) from exc
 
 
 @app.post("/answer")
@@ -79,4 +82,7 @@ def answer(request: AnswerRequest):
         )
         return {"answer": final_answer}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        err_msg = str(exc)
+        if "429" in err_msg or "quota" in err_msg.lower() or "RESOURCE_EXHAUSTED" in err_msg:
+            raise HTTPException(status_code=429, detail="Quota Exceeded") from exc
+        raise HTTPException(status_code=500, detail=err_msg) from exc

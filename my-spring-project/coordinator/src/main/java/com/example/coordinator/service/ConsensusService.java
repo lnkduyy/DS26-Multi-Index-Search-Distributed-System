@@ -216,6 +216,26 @@ public class ConsensusService {
         return null;
     }
 
+    public com.example.coordinator.controller.DishController.Dish redirectIngest(com.example.coordinator.controller.DishController.Dish request, String authHeader) {
+        System.out.println("Redirecting ingest to leader: " + leaderId);
+        if (leaderId != null) {
+            try {
+                String targetUrl = formatUrl(leaderId, "/api/dishes");
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                if (authHeader != null) {
+                    headers.set("Authorization", authHeader);
+                }
+                HttpEntity<com.example.coordinator.controller.DishController.Dish> entity = new HttpEntity<>(request, headers);
+                return restTemplate.postForObject(targetUrl, entity, com.example.coordinator.controller.DishController.Dish.class);
+            } catch (Exception e) {
+                System.out.println("Redirecting ingest fails: " + e.getMessage());
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Redirect failed: " + e.getMessage());
+            }
+        }
+        throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "No leader available to redirect to.");
+    }
+
     /**
      * Leader continuously pings followers to maintain authority.
      * Steps down to follower if a ping fails significantly (split brain prevention).

@@ -1,7 +1,12 @@
 package com.example.shared.model;
 
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ETLQuery {
     private List<Dish> dishes;
 
@@ -13,6 +18,8 @@ public class ETLQuery {
         this.dishes = dishes;
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class Dish {
         private String id;
         private String name;

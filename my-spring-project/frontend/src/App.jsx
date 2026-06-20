@@ -19,11 +19,15 @@ function App() {
           const res = await fetch(`/get?id=${taskId}`);
           const data = await res.json();
           
-          if (data.state === 'SUCCESS') {
+          if (data.state === 'SUCCESS' || data.state === 'done') {
             setResult(data);
             setIsSearching(false);
             setTaskId(null);
-          } else if (data.state === 'ERROR') {
+          } else if (data.state === 'QUOTA_EXCEEDED' || data.state === 'quota_exceeded') {
+            setError("Hệ thống đang bảo trì do hết token. Vui lòng thử lại sau.");
+            setIsSearching(false);
+            setTaskId(null);
+          } else if (data.state === 'ERROR' || data.state === 'error' || data.state === 'FAILED' || data.state === 'failed') {
             setError("Something went wrong during search.");
             setIsSearching(false);
             setTaskId(null);
@@ -120,6 +124,13 @@ function App() {
       {error && (
         <div className="glass-panel" style={{borderColor: 'var(--warning-color)', color: 'var(--warning-color)'}}>
           {error}
+        </div>
+      )}
+
+      {result && result.answer && !isSearching && (
+        <div className="ai-answer-board">
+          <h2>🤖 Epicure Suggests</h2>
+          <p dangerouslySetInnerHTML={{ __html: result.answer.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
         </div>
       )}
 

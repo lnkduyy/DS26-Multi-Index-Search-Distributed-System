@@ -182,22 +182,44 @@ header p {
   margin-top: 2rem;
 }
 
-/* AI Answer */
-.ai-answer {
-  margin-bottom: 2rem;
-  border-left: 4px solid var(--accent-color);
+/* AI Answer Board */
+.ai-answer-board {
+  margin-bottom: 2.5rem;
+  padding: 1.5rem 2rem;
+  background: rgba(28, 25, 23, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(251, 146, 60, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  position: relative;
+  overflow: hidden;
 }
 
-.ai-answer h2 {
-  font-size: 1.2rem;
+.ai-answer-board::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #fb923c, #f87171);
+}
+
+.ai-answer-board h2 {
+  font-size: 1.25rem;
   margin-bottom: 1rem;
   color: #fb923c;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.ai-answer p {
+.ai-answer-board p {
   line-height: 1.6;
+  font-size: 1.1rem;
+  color: #f8fafc;
   white-space: pre-line;
 }
+
 
 /* Recipe Card */
 .recipe-card {

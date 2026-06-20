@@ -62,6 +62,8 @@ public class CoordinatorService {
             response.setRecipes(request.getRecipeQueryResults());
         } else if ("error".equals(request.getState())) {
             response.setState(com.example.shared.model.StatusState.FAILED);
+        } else if ("quota_exceeded".equals(request.getState())) {
+            response.setState(com.example.shared.model.StatusState.QUOTA_EXCEEDED);
         } else if ("received".equals(request.getState())) {
             response.setState(com.example.shared.model.StatusState.RECEIVED);
         } else {
