@@ -64,10 +64,7 @@ This single command will:
 7. Spin up the Python LLM API
 8. Spin up the Python ETL API
 
-Once running, you can access the application at `http://epicure.localhost`.
-
-*(Optional) Register Workers to Coordinator:*
-Depending on your exact cluster setup, you may need to register the worker nodes to the coordinator using the `/apply` endpoint.
+Once running, you can access the frontend web application at `http://epicure.localhost`. All nodes are automatically wired up together via the `cluster-init` service.
 
 ---
 

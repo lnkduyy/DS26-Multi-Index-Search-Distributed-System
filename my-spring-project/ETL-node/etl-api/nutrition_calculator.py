@@ -231,6 +231,7 @@ def _lookup_nutrition(
     qdrant_client: QdrantClient,
     collection: str,
     score_threshold: float = 0.55,
+    embed_model = None,
 ) -> Optional[dict]:
     """
     Search the nutrition collection for the closest matching food.
@@ -241,16 +242,16 @@ def _lookup_nutrition(
         return None
 
     try:
-        results: list[ScoredPoint] = qdrant_client.query_points(
-            collection_name=collection,
-            query=query,          # requires FastEmbed on the Qdrant server side
-            limit=1,
-            score_threshold=score_threshold,
-        ).points
-    except Exception as e:
-        print(f"Error querying Qdrant points for '{query}': {e}")
-        # Fallback: scroll + filter by food_name keyword (no vector needed)
-        try:
+        if embed_model:
+            vector = embed_model.encode(query).tolist()
+            results = qdrant_client.query_points(
+                collection_name=collection,
+                query=vector,
+                limit=1,
+                score_threshold=score_threshold,
+            ).points
+        else:
+            # Fallback if no model provided
             results, _ = qdrant_client.scroll(
                 collection_name=collection,
                 scroll_filter={
@@ -259,9 +260,9 @@ def _lookup_nutrition(
                 limit=1,
                 with_payload=True,
             )
-        except Exception as e2:
-            print(f"Error scrolling Qdrant for '{query}': {e2}")
-            return None
+    except Exception as e2:
+        print(f"Error querying Qdrant for '{query}': {e2}")
+        return None
 
     if not results:
         return None
@@ -315,6 +316,7 @@ def calculate_recipe_nutrition(
     qdrant_client: QdrantClient,
     collection: str = "nutrition",
     score_threshold: float = 0.55,
+    embed_model = None,
 ) -> dict:
     """
     Calculate total nutrition for a recipe from its parsed ingredients.
@@ -366,7 +368,7 @@ def calculate_recipe_nutrition(
             continue
 
         # Qdrant lookup
-        payload = _lookup_nutrition(name, qdrant_client, collection, score_threshold)
+        payload = _lookup_nutrition(name, qdrant_client, collection, score_threshold, embed_model)
         if payload is None:
             continue
 

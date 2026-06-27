@@ -32,14 +32,12 @@ from qdrant_client.http.models import Document
 
 load_dotenv()
 
-os.environ["LANGSMITH_TRACING"] = "true"
-os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
 os.environ["GOOGLE_API_KEY"]    = os.getenv("GOOGLE_API_KEY", "")
 os.environ["QDRANT_API_KEY"]    = os.getenv("QDRANT_API_KEY", "")
 
 # ── Clients (singletons — created once, reused everywhere) ────────────────────
 
-gemini_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", max_retries=0)
+gemini_model = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", max_retries=0)
 
 qdrant_client = QdrantClient(
     url="https://cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io:6333",

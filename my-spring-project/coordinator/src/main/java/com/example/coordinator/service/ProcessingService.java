@@ -19,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -31,6 +32,7 @@ import com.example.shared.model.RecipeQueryResult;
 public class ProcessingService {
 
     private final RestTemplate restTemplate;
+    private final RestTemplate etlRestTemplate;
     private final RequestStorage storage;
     private volatile boolean isLeader;
     private volatile boolean isProcessingThreadRunning = false;
@@ -45,8 +47,9 @@ public class ProcessingService {
     private final ScheduledExecutorService retryScheduler = Executors.newScheduledThreadPool(1);
     private final ConcurrentHashMap<String, Integer> retryCounts = new ConcurrentHashMap<>();
 
-    public ProcessingService(RestTemplate restTemplate, RequestStorage storage) {
+    public ProcessingService(RestTemplate restTemplate, @Qualifier("etlRestTemplate") RestTemplate etlRestTemplate, RequestStorage storage) {
         this.restTemplate = restTemplate;
+        this.etlRestTemplate = etlRestTemplate;
         this.storage = storage;
         isLeader = false;
 
@@ -321,7 +324,7 @@ public class ProcessingService {
                 com.example.shared.model.ETLQuery etlQuery = new com.example.shared.model.ETLQuery();
                 etlQuery.setDishes(List.of(sharedDish));
 
-                com.example.shared.model.ETLQueryResult result = restTemplate.postForObject(targetUrl, etlQuery, com.example.shared.model.ETLQueryResult.class);
+                com.example.shared.model.ETLQueryResult result = etlRestTemplate.postForObject(targetUrl, etlQuery, com.example.shared.model.ETLQueryResult.class);
                 
                 if (result == null || result.getChunks() == null) {
                     retryOrFail(id, request, "ETL processing returned null");
@@ -386,7 +389,6 @@ public class ProcessingService {
                     if (e.getMessage() != null && e.getMessage().contains("429")) {
                         throw new RuntimeException("QUOTA_EXCEEDED", e);
                     }
-                    e.printStackTrace();
                 }
             } while (attempt < 2);
             return null;
@@ -420,8 +422,7 @@ public class ProcessingService {
                         break; // Exit the loop on success
                     }
                 } catch (Exception e) {
-                    System.out.println("Calling RECIPE NODE service failed: " + node);
-                    e.printStackTrace();
+                    System.out.println("Calling RECIPE NODE service failed: " + node + " (" + e.getMessage() + ")");
                 }
             } while (attempt < 3);
 
@@ -451,7 +452,6 @@ public class ProcessingService {
                     if (e.getMessage() != null && e.getMessage().contains("429")) {
                         throw new RuntimeException("QUOTA_EXCEEDED", e);
                     }
-                    e.printStackTrace();
                 }
             } while (attempt < 2);
             return null;

@@ -118,7 +118,8 @@ def process_dishes(payload: DishesPayload):
             key,
             rec,
             qdrant_client=qdrant_client,
-            nutrition_collection="nutrition"
+            nutrition_collection="nutrition",
+            embed_model=model
         )
         # Generate vector using the local model
         vector = model.encode(chunk["text"], show_progress_bar=False).tolist()

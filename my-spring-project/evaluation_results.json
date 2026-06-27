@@ -1,0 +1,110 @@
+{
+  "search_quality": [
+    {
+      "query": "high protein chicken dinner under 30 minutes",
+      "type": "Time-constrained",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.20055174827575684
+    },
+    {
+      "query": "I have eggs, cheese and spinach, what can I make for breakfast",
+      "type": "Ingredient-based",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.008310317993164062
+    },
+    {
+      "query": "healthy low calorie vegetarian soup",
+      "type": "Nutrition-focused",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.008900165557861328
+    },
+    {
+      "query": "quick pasta with garlic and olive oil",
+      "type": "Time-constrained",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.009117364883422852
+    },
+    {
+      "query": "I have salmon, lemon and dill",
+      "type": "Ingredient-based",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.011509180068969727
+    },
+    {
+      "query": "low carb high protein meal prep",
+      "type": "Nutrition-focused",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.01869940757751465
+    },
+    {
+      "query": "traditional Japanese ramen",
+      "type": "Cuisine-specific",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.008290290832519531
+    },
+    {
+      "query": "dessert with chocolate and peanut butter",
+      "type": "Ingredient-based",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.009582996368408203
+    },
+    {
+      "query": "gluten free dinner ideas",
+      "type": "Diet-restricted",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.008048057556152344
+    },
+    {
+      "query": "spicy Thai curry with coconut milk",
+      "type": "Cuisine-specific",
+      "epicure_p5": 0.0,
+      "keyword_p5": 0.0,
+      "epicure_time": 60,
+      "keyword_time": 0.012872695922851562
+    }
+  ],
+  "stress_test": [
+    {
+      "concurrent": 1,
+      "avg_latency": 0,
+      "p95_latency": 0,
+      "throughput": 0.0,
+      "error_rate": 100.0,
+      "total_time": 90.7
+    },
+    {
+      "concurrent": 5,
+      "avg_latency": 0,
+      "p95_latency": 0,
+      "throughput": 0.0,
+      "error_rate": 100.0,
+      "total_time": 90.8
+    },
+    {
+      "concurrent": 10,
+      "avg_latency": 0,
+      "p95_latency": 0,
+      "throughput": 0.0,
+      "error_rate": 100.0,
+      "total_time": 90.6
+    }
+  ]
+}

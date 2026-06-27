@@ -1,0 +1,406 @@
+﻿INTRO:
+Good afternoon everyone. Today, our team will be presenting Epicure — a distributed multi-index food search system powered by Large Language Models.
+
+
+My name is [Duy], and I'll be walking you through the problem we're solving and the overall system architecture. After that, my teammates will dive into each component in detail, and I'll come back at the end for fault tolerance, scalability, and a live demo.
+
+
+PROBLEM STATEMENT:
+"So let's start with a question why we built this system. We identified three key problems with how people search for recipes today."
+
+
+"Problem number one — Fragmented search experience. If you go to any recipe website right now and you want to find, say, a high-protein chicken dinner under 30 minutes — you'd have to manually select filters one by one: meal type dropdown, protein dropdown, time slider, diet checkbox... It takes multiple clicks and you still might not find what you want. The search is fragmented across too many UI controls."
+
+
+"Problem number two — No natural language understanding. What if a user asks something like: 'I have 200 grams of chicken breast, 3 cloves of garlic, and some olive oil — what can I make in under 30 minutes?' This single sentence combines ingredient inventory, time constraints, and recipe discovery. No traditional keyword-based search engine can understand this. It requires a semantic understanding of user intent."
+
+
+"Problem number three — Scalability under load. When you have thousands of recipes and potentially many concurrent users, a single-server architecture becomes a bottleneck. We need a system that can scale horizontally — add more search nodes, more AI processing nodes — without downtime."
+
+
+Our Solution — Epicure:
+"Our solution is Epicure — a distributed search engine that lets users find recipes using plain natural language."
+
+
+"At its core, the system does three things:"
+
+
+"It uses an LLM — Google Gemini — to understand what the user actually wants, and decompose their query into over 20 structured filter dimensions."
+"It performs semantic vector search on a Qdrant vector database to find the most relevant recipes — not just by keywords, but by meaning."
+"It runs as a fully distributed system with multiple replicated nodes, leader election, and fault tolerance — so it never goes down."
+"Let me now show you how all of this fits together."
+
+
+System Architecture — High Level
+"Here's the full architecture of Epicure. The entire system is deployed using Docker Compose with 13 containers running simultaneously."
+
+
+(Point to the architecture diagram on the slide)
+
+
+"Starting from the top:"
+
+
+"The user interacts with a React frontend built with Vite. All traffic goes through an Nginx reverse proxy — it routes / to the frontend and /search, /api to the backend."
+
+
+"The backend core is the Coordinator Cluster — we run 3 Coordinator instances that form a Raft consensus cluster. One is the Leader, the other two are Followers. The Leader is the only one that accepts and processes user requests."
+
+
+"When a search comes in, the Leader delegates work to two worker pools:"
+
+
+"The LLM Node pool — 2 instances — which handles AI processing: query decomposition and answer generation."
+"The Recipe Node pool — 3 instances — which handles vector search against Qdrant Cloud via gRPC."
+"We also have an ETL Node pool — 2 instances — for data ingestion when admins add new recipes."
+
+
+"Each LLM Node and ETL Node is actually a hybrid service: a Java Spring Boot proxy in front of a Python FastAPI backend. This is because AI libraries like LangChain are strongest in Python, while our service mesh is Java-based."
+
+
+Technology Stack
+"Here's a quick overview of our technology stack."
+
+
+Frontend
+	React + Vite
+	Backend Services
+	Spring Boot (Java 17) + FastAPI (Python 3.10)
+	AI / LLM
+	Google Gemini 2.5 Flash Lite via LangChain
+	Vector Database
+	Qdrant Cloud (gRPC + TLS)
+	Embedding Model
+	sentence-transformers/all-MiniLM-L6-v2
+	Inter-service Communication
+	REST (Java ↔ Java), HTTP pass-through (Java → Python), gRPC (Java → Qdrant)
+	Orchestration
+	Docker Compose
+	Build Tools
+	Maven (multi-module) + npm
+	
+
+Key Design Decisions
+"Before handing off to my teammates, let me highlight three design decisions that shape this architecture."
+
+
+"First — the Coordinator owns no data. It doesn't store recipes, it doesn't run AI models. Its only job is to route requests and aggregate results. This is a strict separation of concerns — it keeps each component independently replaceable and testable."
+
+
+"Second — Shared Models library. All Java services share a common Maven module called shared-models that contains DTOs - meaning. This ensures type safety across the entire distributed system — when one service sends a message, the other knows exactly how to deserialize it."
+
+
+"Third — Asynchronous processing. When a user submits a search, they immediately receive a Tracking ID. The actual processing — LLM decomposition, vector search, answer generation — happens in the background. The user polls for results. This prevents request timeouts and allows the system to handle long-running AI calls gracefully."
+
+
+"Now I'll hand it over to [Huy] to walk you through the LLM Node in detail."
+________________
+
+
+LLM Node
+Now I will talk about the first functionality of the system: LLM Node
+The LLM Node has two main jobs: query decomposition and answer generation.
+The first job is query decomposition. This happens through the /llm/decompose API. The Coordinator sends the original user query to the LLM Node. The LLM does not search the database directly. Instead, it analyzes the user’s sentence and converts it into a desired structured format.
+For example, if the user asks: “I want a high-protein chicken dinner under 30 minutes,” the LLM identifies several pieces of meaning. “Chicken” becomes the main protein. “Dinner” becomes the meal type. “Under 30 minutes” becomes a maximum cook time filter. “High-protein” becomes a nutrition-related filter.
+This is useful because the Coordinator and Recipe Node do not need to understand natural language directly. They only need to process structured fields.
+The second job is answer generation. This happens through the /llm/answer API. After the Recipe Node searches Qdrant and returns recipe results, the Coordinator sends those results back to the LLM Node.
+At this stage, the LLM does not create new recipes. It receives retrieved data such as recipe name, ingredients, cooking method, cooking time, nutrition values, and match score. Then it formats this information into a natural answer that is easier for the user to read.
+For example, instead of returning only raw JSON, the LLM can say: “A good option is Garlic Butter Chicken. It matches your request because it uses chicken, has high protein, and can be cooked within 30 minutes.”
+This follows the idea of RAG, or Retrieval-Augmented Generation. The retrieval part happens first: the Recipe Node and Qdrant find relevant recipes. The generation part happens second: the LLM explains the retrieved results.
+The important rule is that the answer must be grounded in retrieved data. The LLM should not invent ingredients, nutrition values, or recipes that were not returned by the database.
+Technically, our LLM Node has two layers. The Java Spring Boot layer exposes the endpoints /llm/decompose and /llm/answer, so it can communicate with the Coordinator like the other Java services. Behind it, the Python FastAPI layer contains the LLM logic using LangChain and Gemini.
+We use Python for the LLM logic because it has better support for AI libraries and prompt development. Java is better for system integration.
+So in short, the LLM Node acts as the language intelligence layer. Before search, it translates user language into structured search instructions. After search, it translates retrieved data into a readable final response.
+
+
+Transition to Data Processing
+Before the system can search recipes effectively, the data must be cleaned, enriched, embedded, and stored in Qdrant. That leads us to the next part: Data Processing.
+
+
+If asked: “Where is RAG used in your project?”
+You can answer:
+RAG is used in the final answer stage. The system retrieves recipes from Qdrant first, then the LLM generates a response using those retrieved recipes. The LLM is not the source of truth; it only explains database results.
+If asked: “Is /llm/decompose part of RAG?”
+Answer:
+It supports the RAG pipeline, but it is not the retrieval or generation step itself. It prepares the query by converting natural language into structured search instructions.
+If asked: “Why use RAG instead of asking the LLM directly?”
+Answer:
+Because we want answers based on our actual recipe database. If we ask the LLM directly, it may hallucinate recipes or nutrition values. RAG grounds the answer in retrieved data.
+If asked: “What is retrieved?”
+Answer:
+Recipe chunks from Qdrant. Each chunk contains recipe text, embeddings, and metadata such as ingredients, cooking time, cuisine, protein, and nutrition totals.
+If asked: “What does Qdrant do?”
+Answer:
+Qdrant stores vector embeddings and metadata. It performs semantic similarity search, so the system can find recipes that match the meaning of the query, not just exact keywords.
+If asked: “What is the difference between vector search and metadata filtering?”
+Answer:
+Vector search finds recipes with similar meaning. Metadata filtering checks structured conditions like cooking time under 30 minutes or protein above a threshold. Our system combines both.
+If asked: “How do you reduce hallucination?”
+Answer:
+We retrieve real data first and instruct the LLM to generate answers only from those retrieved results. The database provides the facts, and the LLM only formats them.
+One-Sentence Version
+If you need one clean sentence:
+In our project, RAG means Qdrant retrieves relevant recipe data first, then the LLM generates a user-friendly answer grounded only in those retrieved results.
+
+
+
+
+
+
+
+
+________________
+
+
+The ETL node is not involved in handling user search requests directly. Instead, it works in the data preparation pipeline.
+
+
+Its job is to take raw recipe data, clean it, transform it into structured information, enrich it with metadata and nutrition information, and generate search-ready recipes.
+
+
+ETL stands for Extract, Transform, and Load. In our project, Extract means reading raw recipe data, Transform means parsing ingredients, calculating nutrition, and enriching metadata, while Load means storing the final processed recipes for retrieval.
+
+
+Our data is taken from Recipe box | Eight Portions. This tool will scrape website, retrieve plain text, format to json file
+
+
+PARSE INGREDIENTS
+
+
+Its purpose is to convert raw ingredient text into structured data that the system can understand.
+
+
+For example, an ingredient such as '2 cups flour, sifted' is parsed into three main fields: quantity, unit, and ingredient name.
+
+
+Before parsing, the system removes unnecessary text such as advertisements, optional notes, and preparation details like chopped, diced.
+
+
+The final output is a clean ingredient list that can be used later for nutrition calculation and metadata enrichment.
+
+
+NUTRITION CALCULATION
+
+
+The purpose of a nutrition calculator is to estimate the nutritional values of a recipe, such as calories, protein, fat, and carbohydrates.
+
+
+First, the parsed ingredient quantities are converted into grams. This is necessary because nutrition values in the database are stored per 100 grams.
+
+
+Next, the system searches the nutrition collection in Qdrant to find the best matching food item for each ingredient.
+
+
+Finally, the nutrition values are scaled according to the ingredient weight and summed together to produce the total nutrition for the entire recipe.
+
+
+ENRICH RECIPE
+
+
+Once the ingredients and nutrition information are ready, the final step is combining everything together using the enrich recipes function.
+
+
+This combines all previous processing steps together.
+
+
+It generates additional metadata such as meal type, cuisine, cooking method, diet flags, and estimated cooking time.
+
+
+Finally, all of this information is stored in a single RAG-ready recipe object containing recipe text, parsed ingredients, nutrition information, and searchable metadata.
+
+
+WHY WE NEED TO RESOLVE METADATA
+
+
+Resolving metadata means converting raw recipe text into structured fields that the system can search and filter.
+
+
+This is important because vector search alone only finds recipes with similar meaning. However, users often search using specific requirements.
+
+
+For example, a user may want a vegetarian recipe that takes less than 30 minutes to cook.
+
+
+Without metadata, the system would have to infer these conditions from raw text every time, which is slower and less reliable.
+
+
+By generating metadata such as cuisine, diet flags, and cooking time during the ETL process, the system can apply exact filters before performing semantic search.
+
+
+Metadata lets the coordinator combine exact filtering with vector search, so retrieval becomes both precise and semantic.
+
+
+SUMMARIZE
+
+
+To summarize, the ETL node transforms raw recipe data into structured and searchable recipe records.
+
+
+Parse ingredients convert raw ingredient text into structured ingredient information.
+
+
+The nutrition calculator estimates nutritional values for each recipe.
+
+
+Enrich recipes combine everything together and generate metadata-rich recipes.
+
+
+By preparing the data in advance, the ETL node enables more accurate retrieval and filtering in the recipe search system.
+
+
+
+
+
+
+________________
+
+
+Recipe Node Architecture
+The Recipe Node serves as both the search engine and database gateway for our system. It is the only service allowed to write to the Qdrant recipe collection, ensuring consistency, security, and simplified data management. 
+To retrieve the relevance results, the Recipe Node follows a four-step pipeline:
+Retrieval, Hard Filtering, Heuristic Scoring, and Sorting.
+Let's walk through each stage.
+________________
+
+
+Step 1: Retrieval
+The first stage is retrieval.
+When a user submits a request, the AI generates a search query, and the Recipe Node uses that query to search our Qdrant vector database.
+By using both keyword search and vector search (which captures the semantic meaning of a query rather than relying solely on exact keywords, the system can retrieve more accurate and context-aware results ). We use gRPC for efficient communication and high concurrency. This combination allows us to retrieve recipes that match both the user's words and the underlying intent behind the query. 
+________________
+
+
+Step 2: Hard Filtering
+Next comes hard filtering. Any recipe that violates explicit requirements—such as dietary restrictions or calorie limits—is removed before scoring. This reduces computation and focuses only on viable candidates. 
+________________
+
+
+Step 3: The Multi-Factor Scoring Algorithm
+Rather than relying solely on vector similarity, we use a composite scoring model that combines six different factors.
+The first factor is the Qdrant Vector Score, which contributes 35 percent.
+The second factor is Inventory Match, worth 20 percent.
+The third and fourth factors are Title Overlap and Ingredient Overlap, which together contribute 30 percent of the score.
+The fifth factor is Cook Time Preference, worth 10 percent.
+Finally, we have Protein Relevance, which contributes 5 percent.
+This scoring model balances semantic relevance, available ingredients, user preferences, and practical cooking constraints. 
+For example, a recipe that closely matches the user's intent and uses ingredients already available in their refrigerator will rank higher than a recipe that requires many missing items. 
+Final Output and System Impact
+The final stage is sorting and delivery.
+After all valid recipes have been scored, the Recipe Node sorts them according to their final composite score.
+It then returns the top K results to the Coordinator for presentation to the user.
+The Recipe Node also generates a dynamic missing ingredients list that tells the system exactly which ingredients the user does not currently have available.
+As a result, the LLM can provide practical recommendations, such as suggesting what the user needs to buy before cooking a recipe.
+________________
+
+
+Data Ingestion: Keeping the Database Fresh
+The Recipe Node also manages data ingestion. New recipes are processed by the ETL Node, enriched with structured and nutritional information, and then sent back to the Recipe Node for vector generation and storage in Qdrant. Once stored, they become searchable almost immediately. 
+________________
+
+
+Conclusion
+In summary, the Recipe Node acts as both the search engine and knowledge manager for our recipe platform. Through retrieval, filtering, scoring, and ranking, it delivers personalized recommendations while keeping the recipe database continuously updated. 
+________________
+
+
+CONSENSUS
+So now I will talk about the coordinator. The coordinator like mentioned in the system architecture is a very important nodes, as it receives client search request and route them to other nodes for further processing. At each stage of the processing of the search request, the result is updated back to the storage of the coordinator, preventing the loss of progress in case of a death of a worker node.
+However, this cause a problem, that is the coordinator will become a single point of failure, Therefore, our system design has multiple coordinators running at the same time, providing the fault tolerance to the system.
+(From our system design, the coordinator could be a single point of failure, that’s why we will have many nodes doing this job, and coordinating the workflow and a consensus between these coordinators.)
+A coordinator has its own ID, a list of other worker nodes, a term and all the User Search Request.
+The implementation was based on the basics of RAFT algorithm with some modification.
+RAFT Basics
+At any given time, each server is in one of three states: leader, follower, or candidate. And in normal condition, there would be only 1 coordinator and the rest will be followers.
+In our case, the follower job’s is to back up all the data of client requests sent from the leader and works as a backup node. They will not be processing anything as all the computational jobs are done by the workers node.
+Any new update to the data of user request is stored in the leader and the broadcast to the followers to maintain a consistency.
+The coordinator is the gateway of the system. The leader will be the one receiving the requests and routes them to the workers node. If a request from the client is sent to a follower, it will be redirected to the current leader.
+The time in the RAFT algorithm is also divided into terms, like presidential term, each is specified by an integer, increase by 1 in the next term. Each term will have at most 1 leader and begins by starting an election.
+Leader Election
+So for leader election, just like RAFT, every node starts as a follower and stay in that state as long as it still receives frequent heartbeat from a valid leader, which in this case is the leader with the newest term. If it does not receive the heartbeat for a fixed period of time, the node will become a candidate, then it will wait for a random amount of time before starting the election. This will prevent more than 1 election starting at once, and cannot elected a leader.
+A candidate node starts the election by first increasing its term, vote itself and sending out its vote request to all of the other coordinator. The vote request contains its id, the number of requests it currently stored and its term.
+A coordinator node received a vote request will check the included information and only vote for the sender if the term and request count of the sender is higher or equals to those of that node.
+(The reason we choose to comparing the number of requests count, instead of log-index like the original RAFT is because every client requests has a time to live and they will be deleted after some time. Therefore, only the most connected and up-to-date node will be the one with the most request count.)
+ If the candidate receive vote from more than half of the coordinators (including itself), it will promote itself to the leader and starts the broadcasting the heartbeats, prevent other nodes starting another election.
+Valid heartbeats
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Leader
+The leader on the other hand will be the one coordinating the work flow of the system, including passing requests to other worker nodes (llm or recipe node). Any request from the client is forward to the leader, where they will be store and will then return the id to which the client can get the result. Any request being added to the leader memory is also broadcast to its followers to maintain consistency and prevent loss of request in case the leader die. Like in the system design earlier, … .
+Candidate
+The follower will check if it has received the heart beat from the leader in a fixed time frame. If it does not receive the heartbeat, the node will become a candidate, then it will wait for a random amount of time before starting the election. This will prevent more than 1 election starting at once, and cannot elected a leader.
+Election
+A candidate node starts the election by first increasing its term and sending out its vote request to all of the other coordinator. The vote request contains its id, the number of requests it currently stored and its term.
+A coordinator node received a vote request will check the included information and only vote for the sender if the term and request count of the sender is higher or equals to those of that node. A node voted for another node will also become a follower, temporary follower the candidate. If the candidate receive vote from half of the coordinators, it will promote itself to the leader and starting the processing of request as broadcasting.
+// other info?
+The number of request comparison is to choose the most updated node as leader, as higher request count can only be achieved by receiving the most of recent request from the client.
+ 
+ 
+ 
+ 
+ 
+ 
+WORK FLOW
+Routing search requests
+The coordinators receive the search request from the client.
+If follower coordinators, redirect to the leader coordinator.
+The leader will then save the request to its storage, then broadcast that request to the followers to also save on their storage. Then it will return an ID with which the user can used to retrieve the result of the search.
+The search request storing in the leader coordinator will be processed like above … .
+After every stage of the processing, the request in the storage is updated with the new processed information, the updated information is also broadcast to the followers.
+ 
+ 
+ 
+ 
+ 
+ 
+________________
+
+
+"Thank you [Nam]. Now that you've seen how the Coordinator orchestrates everything, I want to zoom into a critical characteristic of our distributed system: Fault Tolerance"        
+
+
+Slide: Fault Tolerance & Recovery Mechanics
+"The biggest risk in any distributed system is: what happens when a node dies? As [Nam] just explained, our Consensus handles leader elections to keep the system alive. But leader election alone isn't enough."
+
+
+"What about the user requests that were actively being processed when the Leader died?"
+        
+"We solve this with state replication. Every time a request changes state — from received to formatted to searched to done — the Leader copies the full request state to all Follower nodes via the /copy endpoint."
+
+
+"So if the Leader crashes at step 2 — let's say during LLM decomposition — here's what happens:"
+
+
+
+
+
+
+
+
+
+
+"Followers detect the timeout and a new Leader is elected via the Consensus."
+"The new Leader already has a copy of the in-progress request."
+"It picks up processing right where it left off in the pipeline."
+"The user gets their result — seamlessly."
+"On top of that, we have retry mechanisms at every processing step. If an LLM call or a database search fails, the system retries up to 3 times with a 5-second delay between attempts. Only after 3 failures does it mark the request as an error."
+
+
+"And for worker nodes — when the Coordinator calls an LLM or Recipe node, it randomly selects from the available pool. If that node fails, it retries with another random node — up to 3 attempts for LLM and Recipe. This is essentially client-side load balancing with automatic failover."
+
+
+________________

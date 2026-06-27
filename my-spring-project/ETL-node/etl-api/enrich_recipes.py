@@ -298,7 +298,8 @@ def derive_metadata(key: str, rec: dict, clean_ings: list,
 
 def to_rag_chunk(key: str, rec: dict,
                  qdrant_client=None,
-                 nutrition_collection: str = "nutrition") -> dict:
+                 nutrition_collection: str = "nutrition",
+                 embed_model=None) -> dict:
     clean_ings = clean_ingredients(rec.get("ingredients") or [])
     parsed     = parse_ingredients(clean_ings)
 
@@ -308,6 +309,7 @@ def to_rag_chunk(key: str, rec: dict,
             parsed_ingredients=parsed,
             qdrant_client=qdrant_client,
             collection=nutrition_collection,
+            embed_model=embed_model,
         )
 
     ing_text = "\n".join(f"- {i}" for i in clean_ings)
