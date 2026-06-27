@@ -3,7 +3,11 @@
 
 # --- IDEs / Editors ---
 .vscode/
+.idea/
+*.iml
 
+# --- Environment ---
 .env
 
+# --- Misc ---
 /ignore
