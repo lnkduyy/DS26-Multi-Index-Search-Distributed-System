@@ -1,63 +1,32 @@
 # ETL Pipeline Node
 
-This folder contains the ETL (Extract, Transform, Load) components of the Distributed System. It is responsible for intercepting new recipes, parsing their ingredients, and connecting to Qdrant to calculate enriched nutritional metadata before the data is ingested into the RAG engine.
+This folder contains the ETL (Extract, Transform, Load) components of the Distributed System. It is responsible for intercepting new recipes, parsing their ingredients, and connecting to Qdrant to calculate enriched nutritional metadata before the data is ingested into the database.
 
 The ETL pipeline consists of two tightly coupled services:
-1. **Python API** (`/etl-api`): Performs the heavy lifting (parsing logic, vector search, math).
-2. **Java Spring Boot Node** (Root): Exposes the ETL service to the rest of the Java-based distributed system and orchestrates the calls.
+1. **Python API (`etl-api`)**: Performs the heavy lifting (parsing logic, AI vector generation, math).
+2. **Java Spring Boot Node (Root)**: Exposes the ETL service to the rest of the Java-based distributed system and orchestrates the calls.
 
 ---
 
-## 🚀 How to Build and Run
+## 🌟 Key Features
 
-To run the full end-to-end flow, you need to spin up all three required components in separate terminals.
+### Semantic Vector Search for Nutrition
+Instead of relying on strict text matching (where "1 crusty baguette" would fail to match "baguette"), this node uses a **Semantic Vector Search**.
+- It uses a local AI model (`SentenceTransformer/all-MiniLM-L6-v2`) to convert messy ingredient strings into mathematical vectors.
+- It queries the Qdrant database to find the closest semantic match in the nutrition collection, ensuring highly accurate calorie and macro calculations.
 
-### 1. Start the Python ETL API
-The Python API connects to the Qdrant Cloud cluster, so it requires an API key to authenticate.
-
-```powershell
-cd etl-api
-# Set your API key for the current terminal session
-$env:QDRANT_API_KEY="your-qdrant-api-key-here"
-
-# Start the FastAPI server on port 6000
-uvicorn app:app --port 6000 --reload
-```
-*(Note: On startup, the Python API will automatically verify and create any missing Qdrant text indexes).*
-
-### 2. Start the Java ETL Node
-This is the Spring Boot microservice that acts as the bridge.
-
-```powershell
-# Open a second terminal
-cd ETL-node
-mvn spring-boot:run
-```
-*(This service runs on port `8140` by default).*
-
-### 3. Start the Coordinator Node
-The Coordinator receives user requests and triggers the ETL node.
-
-```powershell
-# Open a third terminal
-cd ../coordinator
-mvn spring-boot:run
-```
-*(This service runs on port `8080` by default).*
+### Asynchronous Ingestion
+Because AI processing and vector searches are slow, the ETL node is designed to process data asynchronously. The Coordinator hands the job to the ETL Node, which processes it in the background and reports back when finished.
 
 ---
 
-## 🧪 Testing the Integration
+## 🚀 How to Run
 
-Once all three terminals are running without errors, you can simulate a user adding a new recipe. 
+This node is automatically managed by Docker Compose. You do not need to start it manually.
 
-Open a **fourth** PowerShell terminal and run this single-line command:
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8080/api/dishes" -Method Post -ContentType "application/json" -Body '{"name": "Spaghetti Bolognese", "ingredients": ["1 pound ground beef", "2 cups tomato sauce", "2 cloves garlic", "1 medium onion"], "cookingMethod": "Boil spaghetti until al dente. In a pan, cook ground beef with garlic and onion, then add tomato sauce. Mix with pasta."}'
+```bash
+cd ..
+docker-compose up -d --build etl-node-1 etl-node-2 python-etl-api
 ```
 
-**What to expect:**
-1. You will receive a `201 Created` response.
-2. The **Python API terminal** will log the processing chunks.
-3. The **Coordinator terminal** will print the resulting `--- ENRICHED METADATA START ---` JSON block, fully populated with the calculated nutritional values!
+*(By default, the Java nodes run internally on ports 8140/8141, and the Python API runs on port 6000).*

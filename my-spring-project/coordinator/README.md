@@ -1,86 +1,35 @@
 # Coordinator Node
 
-`coordinator` is the master orchestrator of the distributed food search system. It is built with Spring Boot and uses a custom implementation of the **Raft Consensus Algorithm** to manage the cluster state, handle leader elections, and orchestrate search requests across multiple worker nodes.
+The `coordinator` is a Java/Spring Boot microservice that acts as the central orchestrator of the distributed system. It manages the state of long-running tasks and coordinates communication between the frontend and the AI nodes.
 
-## 🏗 Architecture & Raft Consensus
+## 🌟 Key Features
 
-The `coordinator` module acts as the entry point for all user requests and ensures high availability. It runs in a cluster where one node is the **Leader** and the others are **Followers**.
+1. **Raft-Like Leader Election**:
+   - Because we run 3 instances of the coordinator (for high availability), they need to decide who is the "boss".
+   - The nodes ping each other. If the leader goes offline, the remaining nodes hold an election to choose a new leader automatically.
+2. **Task Queues & State Management**:
+   - Some AI tasks (like processing a new recipe) take time. The coordinator puts these tasks into a background queue.
+   - It assigns a UUID to each task so the frontend can poll for the `PENDING` or `SUCCESS` status asynchronously.
+3. **Fault Tolerance & Retries**:
+   - External AI APIs (like Gemini) can fail or time out during high traffic.
+   - The coordinator wraps these API calls in a smart Retry mechanism. If a call fails, it will wait 5 seconds and try again, ensuring the system doesn't crash from temporary network issues.
 
-- **Leader Election**: Managed by `ConsensusService`. If a follower does not receive a heartbeat (`/ping`) from the leader within 5 seconds, it promotes itself to a **Candidate** and broadcasts a `/vote` request. The node with the majority of votes becomes the new leader.
-- **Request State Machine**: The leader receives user requests and manages their lifecycle (`received` -> `decomposed` -> `recipes_found` -> `done` or `error`).
-- **Worker Delegation**: The leader distributes sub-tasks (`/llm/decompose`, `/recipes/search`, `/llm/answer`) to the `llm-node` and `recipe-node` pools using `ProcessingService`.
+## 🧩 How It Works
 
-## 📂 Key Components
+When a user searches for a recipe, the Coordinator:
+1. Receives the HTTP request from Nginx.
+2. Forwards the query to the `llm-node` to extract the search intent.
+3. Forwards the extracted intent to the `recipe-node` to perform a semantic vector search in Qdrant.
+4. Forwards the search results back to the `llm-node` to generate a natural, conversational answer for the user.
+5. Returns the final JSON response to the frontend.
 
-- **`ClientController`**: Exposes the public REST API (`/search`, `/get`) for frontend clients. Only the Leader processes these requests.
-- **`AuthController`**: Handles simple token-based authentication for the `/admin` portal (uses hardcoded config).
-- **`DishController`**: Secured endpoint for adding new dishes to the Qdrant database. Routes to the ETL node.
-- **`ClusterController`**: Internal endpoints (`/ping`, `/vote`, `/join`, `/copy`, etc.) used for inter-node communication and Raft consensus.
-- **`ConsensusService`**: Contains the core logic for the Raft algorithm (heartbeats, elections, terms, node discovery).
-- **`ProcessingService`**: The background worker thread that monitors the `requestQueue` and makes external HTTP calls to `llm-node` and `recipe-node`.
-- **`RequestStorage`**: A thread-safe in-memory key-value store that holds the `UserRequest` objects and their current processing state. It also broadcasts state copies to follower nodes for fault tolerance.
+## 🚀 How to Run
 
-## 🚀 Setup & Execution
+This node is automatically managed by Docker Compose. You do not need to start it manually.
 
-You can run multiple instances of the coordinator to form a cluster.
-
-1. **Run the First Node (Leader)**
-   ```bash
-   mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=8080 --node.id=8080"
-   ```
-
-2. **Run a Second Node (Follower)**
-   ```bash
-   mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=8081 --node.id=8081"
-   ```
-
-3. **Join the Cluster**
-   Send a join request from the new node to the leader:
-   ```bash
-   curl -X POST "http://localhost:8080/join?id=8081"
-   ```
-
-## 🛠 Public API Usage
-
-### 1. Initiate a Search
-**Request**
 ```bash
-curl -X POST http://localhost:8080/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userQuery": "I want a high protein chicken dinner under 30 minutes"
-  }'
-```
-**Response**
-Returns a tracking ID (UUID) immediately.
-```text
-3fa85f64-5717-4562-b3fc-2c963f66afa6
+cd ..
+docker-compose up -d --build coordinator-1 coordinator-2 coordinator-3
 ```
 
-### 2. Poll for Results
-Since processing involves multiple LLM calls and vector searches, it is asynchronous.
-**Request**
-```bash
-curl -X GET "http://localhost:8080/get?id=3fa85f64-5717-4562-b3fc-2c963f66afa6"
-```
-**Response (Pending)**
-```json
-{
-  "state": "PENDING"
-}
-```
-
-**Response (Done)**
-```json
-{
-  "state": "SUCCESS",
-  "recipes": [
-    {
-      "item_name": "Garlic Butter Chicken",
-      "score": 0.88,
-      "payload": "..."
-    }
-  ],
-  "answer": "Here are some great options for you! You can make Garlic Butter Chicken..."
-}
-```
+*(By default, the 3 nodes run internally on ports 8080, 8081, and 8082, but they are unified behind Nginx on port 80).*
