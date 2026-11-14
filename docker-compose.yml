@@ -17,7 +17,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - QDRANT_HOST=cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io
+      - QDRANT_HOST=${QDRANT_HOST:-cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
       - QDRANT_API_KEY=${QDRANT_API_KEY}
@@ -32,7 +32,7 @@ services:
       - "8100:8100"
     environment:
       - SERVER_PORT=8100
-      - QDRANT_HOST=cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io
+      - QDRANT_HOST=${QDRANT_HOST:-cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
       - QDRANT_API_KEY=${QDRANT_API_KEY}
@@ -47,7 +47,7 @@ services:
       - "8101:8101"
     environment:
       - SERVER_PORT=8101
-      - QDRANT_HOST=cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io
+      - QDRANT_HOST=${QDRANT_HOST:-cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
       - QDRANT_API_KEY=${QDRANT_API_KEY}
@@ -62,7 +62,7 @@ services:
       - "8102:8102"
     environment:
       - SERVER_PORT=8102
-      - QDRANT_HOST=cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io
+      - QDRANT_HOST=${QDRANT_HOST:-cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
       - QDRANT_API_KEY=${QDRANT_API_KEY}
@@ -99,7 +99,7 @@ services:
     ports:
       - "6000:6000"
     environment:
-      - QDRANT_HOST=cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io
+      - QDRANT_HOST=${QDRANT_HOST:-cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_API_KEY=${QDRANT_API_KEY}
 
