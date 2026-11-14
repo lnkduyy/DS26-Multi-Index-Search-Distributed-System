@@ -28,7 +28,7 @@ app = FastAPI(title="Recipe Ingest API")
 
 load_dotenv()
 
-qdrant_host = os.getenv("QDRANT_HOST", "cf19a9b2-fef9-49a9-96b2-003c18348045.eu-central-1-0.aws.cloud.qdrant.io")
+qdrant_host = os.getenv("QDRANT_HOST", "912cbc30-af65-4908-831a-4ea4091fdeb3.us-east-1-1.aws.cloud.qdrant.io")
 qdrant_api_key = os.getenv("QDRANT_API_KEY", "")
 qdrant_url = os.getenv("QDRANT_URL", f"https://{qdrant_host}:6333" if not qdrant_host.startswith("http") else qdrant_host)
 qdrant_client = QdrantClient(
