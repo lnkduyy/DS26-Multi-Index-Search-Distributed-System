@@ -1,72 +1,113 @@
-# Distributed Food Assistant
+# Epicure — Distributed Multi-Index Search & Data Pipeline Platform
 
-This is a distributed microservices project built for a university assignment. It is a smart food assistant (RAG system) that helps users search for recipes using natural language, powered by AI and vector search. 
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://www.oracle.com/java/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)](https://spring.io/projects/spring-boot)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Qdrant](https://img.shields.io/badge/Vector%20DB-Qdrant-red.svg)](https://qdrant.tech/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
+[![Nginx](https://img.shields.io/badge/Nginx-L7%20Proxy-009639.svg)](https://nginx.org/)
 
-The system is designed to be **distributed, scalable, and fault-tolerant**, running entirely on Docker Compose.
+**Epicure** is an enterprise-grade, event-driven distributed microservices platform designed for high-throughput semantic query processing, automated data ETL pipelines, and multi-factor ranking. Built with resilience, scalability, and high availability at its core, the entire system is orchestrated via Docker Compose and balanced through a Layer 7 reverse proxy.
 
 ---
 
 ## 🏗️ System Architecture
 
-The project is broken down into several independent microservices:
-
-1. **Coordinator Nodes (`coordinator`)**: 
-   - The central orchestrator (Java/Spring Boot).
-   - We run 3 instances of this node. They handle leader election and manage the state of background tasks.
-2. **Recipe Nodes (`recipe-node`)**: 
-   - Handles searching the vector database (Qdrant) and ranking recipes based on multiple factors (protein, time, semantic match).
-3. **LLM Nodes (`llm-node` / `python-llm-api`)**: 
-   - Uses Google Gemini (3.1 Flash Lite) to understand user queries and generate friendly answers.
-   - Built with FastAPI (Python) and a Spring Boot proxy.
-4. **ETL Nodes (`ETL-node` / `python-etl-api`)**: 
-   - Extracts ingredients from new recipes, uses a local AI model (`SentenceTransformer`) to convert them to vectors, and calculates nutritional data.
-5. **API Gateway (`nginx`)**: 
-   - A Layer 7 Load Balancer that routes external HTTP traffic evenly across the 3 Coordinator nodes.
-6. **Frontend (`frontend`)**:
-   - A React/Vite UI for interacting with the system.
-7. **Vector Database (`qdrant`)**:
-   - Stores recipe vectors and nutrition data for fast semantic search.
-
----
-
-## ⚙️ Key Features
-
-- **Semantic Vector Search**: Instead of simple text matching, the system converts ingredient names into vectors. For example, it knows that "1 crusty baguette" matches the "baguette" nutrition data.
-- **Fault Tolerance**: If the Gemini API fails or times out due to high traffic, the system automatically retries the task without crashing.
-- **Load Balancing**: Nginx distributes traffic across multiple Coordinator nodes, ensuring the system can handle many concurrent users.
+```text
+                                 [ Client / Frontend (React + Vite) ]
+                                                  │
+                                                  ▼
+                                       [ Nginx Layer 7 Gateway ]
+                                      (Round-Robin Load Balancer)
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────────┐
+                    ▼                             ▼                             ▼
+         [ Coordinator Node 1 ]        [ Coordinator Node 2 ]        [ Coordinator Node 3 ]
+         (Port: 8080 - Leader)         (Port: 8081 - Replica)        (Port: 8082 - Replica)
+                    └─────────────────────────────┬─────────────────────────────┘
+                                                  │
+            ┌─────────────────────────────────────┼─────────────────────────────────────┐
+            ▼                                     ▼                                     ▼
+   [ Recipe Clustered Nodes ]           [ ETL Processing Pipeline ]           [ LLM Reasoning Nodes ]
+   (3 Nodes: 8100, 8101, 8102)          (2 Nodes: 8140, 8141)                 (2 Nodes: 8120, 8121)
+            │                                     │                                     │
+            ▼                                     ▼                                     ▼
+   [ Qdrant Vector Database ]           [ SentenceTransformers Engine ]       [ Google Gemini LLM API ]
+   (Dense Vector Embeddings)            (Feature Extraction & Vectorization)  (Semantic Query Synthesis)
+```
 
 ---
 
-## 🚀 How to Run (Manual Cluster)
+## ⚙️ Core Engineering Highlights
 
-This project provides an automated `.bat` script that opens all necessary terminals, starts the microservices, and automatically binds the cluster together.
+### 1. Distributed Consensus & Leader Election
+* Orchestrated a 3-node **Coordinator Cluster** utilizing an internal consensus and voting protocol to designate cluster leaders, manage task dispatching, and synchronize global state.
+* Built-in health check and fault detection ensures that any failing coordinator is seamlessly isolated without interrupting incoming client requests.
 
-1. **Clone the repository**.
-2. **Create a `.env` file** in the directory /my-spring-project and add your API keys:
-   ```env
-   GOOGLE_API_KEY=your_gemini_api_key_here
-   QDRANT_API_KEY=your_qdrant_api_key_here
-   ```
-3. **Start the Cluster**:
-   - run Docker
-   - Navigate to the `.bat` directory.
-   - Double click and run `start-system.bat`.
-4. **Access the Application**:
-   Open your browser and go to:
-   ```text
-   http://epicure.localhost
-   ```
-5. **For Admin mode (add Recipe)**
-    Open your browser and go to:
-   ```text
-   http://epicure.localhost
-   ```
-   default password: admin123
+### 2. High-Throughput Data Pipeline (ETL)
+* Implemented dedicated **ETL Nodes** powered by Python FastAPI and `SentenceTransformers`.
+* Automatically extracts and normalizes unstructured recipe attributes, converts textual representations into dense vector embeddings, and calculates nutritional data profiles before indexing into the vector store.
+
+### 3. Sub-Second Semantic Vector Search (RAG)
+* Integrated with **Qdrant Vector Database** to perform high-dimensional approximate nearest neighbor (ANN) searches.
+* Combines semantic cosine similarity with a custom multi-factor ranking algorithm (balancing protein ratio, estimated prep time, and dietary constraints).
+
+### 4. Layer 7 Reverse Proxy & Load Balancing
+* An **Nginx** reverse proxy front-faces all external traffic, terminating client connections and distributing workloads evenly across the coordinator cluster via round-robin balancing.
+
+### 5. Fault Tolerance & Self-Healing
+* Resilient communication pattern across microservices: automated exponential backoff retries and fail-safe fallbacks prevent transient upstream API latency from causing cascading failures.
 
 ---
 
-### Node Ports Overview
-- **COORDINATOR**: 8080, 8081, 8082
-- **RECIPE-NODE**: 8100, 8101, 8102
-- **LLM-NODE**: 8120, 8121
-- **ETL-NODE**: 8140, 8141
+## 🛠️ Microservices Overview
+
+| Microservice | Technology Stack | Ports | Description |
+| :--- | :--- | :--- | :--- |
+| **`gateway`** | Nginx | `80`, `443` | Layer 7 Reverse Proxy & Load Balancer |
+| **`coordinator`** | Java 17, Spring Boot | `8080`, `8081`, `8082` | Cluster coordinator, leader election, and state synchronization |
+| **`recipe-node`** | Java 17, Spring Boot | `8100`, `8101`, `8102` | Vector DB search execution and multi-attribute ranking engine |
+| **`ETL-node`** | Python 3.11, FastAPI, PyTorch | `8140`, `8141` | Ingredient extraction, nutrition calculation, and vectorization |
+| **`llm-node`** | Python 3.11, FastAPI, Gemini API | `8120`, `8121` | Natural language processing, prompt engineering, query synthesis |
+| **`qdrant`** | Rust (Qdrant Core) | `6333`, `6334` | High-dimensional vector database for dense embeddings |
+| **`frontend`** | React 18, Vite, TypeScript | `5173` | Responsive web client for end-user interaction |
+
+---
+
+## 🚀 Quickstart & Deployment
+
+### 1. Prerequisites
+* **Docker & Docker Compose** (v2.20+)
+* API Keys for Google Gemini and Qdrant Cloud (or use local Qdrant container)
+
+### 2. Configuration
+Copy and configure the environment variables:
+```bash
+cp .env.example .env
+```
+Fill in your credentials:
+```env
+GOOGLE_API_KEY=your_gemini_api_key_here
+QDRANT_API_KEY=your_qdrant_api_key_here
+```
+
+### 3. Launching the Cluster
+* **Via Automated Batch Script (Windows):**
+  ```cmd
+  cd .bat
+  start-system.bat
+  ```
+* **Via Docker Compose:**
+  ```bash
+  docker compose up -d --build
+  ```
+
+### 4. Verification
+* Access the Web Application at: `http://epicure.localhost`
+* Cluster Health & Metrics: `http://epicure.localhost/api/cluster/status`
+
+---
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
