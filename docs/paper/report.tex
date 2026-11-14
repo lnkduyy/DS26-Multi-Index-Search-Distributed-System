@@ -1,0 +1,853 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{hyperref}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usepackage{pgf-pie}
+\usepackage{subfigure}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage{listings}
+
+\pgfplotsset{compat=1.18}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+% --- PASTE THIS CODE IN YOUR PREAMBLE (Before \begin{document}) ---
+\makeatletter
+\newcommand{\linebreakand}{%
+  \end{@IEEEauthorhalign}
+  \hfill\mbox{}\\ \par
+  \mbox{}\hfill\begin{@IEEEauthorhalign}
+}
+\makeatother
+% -----------------------------------------------------------------
+    
+\begin{document}
+
+\title{Epicure: A Highly Scalable LLM-Powered Distributed Search Engine for Semantic Culinary Discovery
+\thanks{}
+}
+
+
+\author{
+  \IEEEauthorblockN{Nguyen Trong Huy}  
+  \IEEEauthorblockA{Matriculation number: 10423046 \\  
+  \textit{Vietnamese-German University}}  
+  \and  
+  \IEEEauthorblockN{Nguyen Xuan Anh Khoa}  
+  \IEEEauthorblockA{Matriculation number: 10423058 \\  
+  \textit{Vietnamese-German University}}  
+  \and  
+  \IEEEauthorblockN{Tran Khanh Nam}  
+  \IEEEauthorblockA{Matriculation number: 10423079 \\  
+  \textit{Vietnamese-German University}}  
+  \linebreakand % <--- This creates a perfect, error-free line break
+  \IEEEauthorblockN{Le Ngoc Khang Duy}  
+  \IEEEauthorblockA{Matriculation number: 10423024 \\  
+  \textit{Vietnamese-German University}}  
+  \and  
+  \IEEEauthorblockN{Nguyen Manh Khôi}  
+  \IEEEauthorblockA{Matriculation number: 10423062 \\  
+  \textit{Vietnamese-German University}}  
+}
+
+
+
+\maketitle
+
+
+
+\begin{abstract}
+Recipe search platforms have traditionally relied on manually configured filters combined with keyword-based retrieval. While such approaches are effective for simple queries, they often fail to capture the intent behind expressive natural language input and require users to navigate fragmented filtering interfaces. Furthermore, single-server architectures face scalability and availability limitations when handling large recipe databases and high volumes of concurrent users. This paper presents Epicure, a distributed search engine that integrates a Large Language Model (LLM), semantic vector search, and fault-tolerant microservices to achieve efficient and accurate retrieval. Epicure employs Google Gemini to decompose natural language queries into structured search dimensions and utilizes a hybrid retrieval framework that combines metadata filtering with vector similarity search in Qdrant. To ensure scalability and reliability, the system adopts an orchestrator-based architecture comprising coordinator, LLM, ETL, and recipe nodes, with fault tolerance achieved through a Raft-inspired consensus algorithm.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Semantic Search, Large Language Models, Vector Databases, Distributed Systems, RAG.
+\end{IEEEkeywords}
+
+
+\section{Introduction}
+\label{sec:introduction}
+The rapid growth of online culinary content has transformed recipe discovery into a large-scale information retrieval problem. Modern recipe repositories contain thousands of entries spanning diverse cuisines, dietary restrictions, nutritional requirements, and preparation methods. As these collections expand, users increasingly expect search systems capable of understanding complex, personalized requirements rather than returning generic keyword matches.
+
+Most existing recipe search platforms rely on keyword-based search engines augmented by manually configured filters\cite{2026CulinaryAIMI}. Users are typically required to specify constraints such as preparation time, cuisine type, dietary preferences, ingredients, and meal category through separate interface components. While functional for simple queries, this process fragments the search experience and places a significant cognitive burden on the user, who must translate a single intent into multiple disconnected inputs.
+
+Beyond interface fragmentation, traditional search engines are fundamentally constrained by their reliance on lexical matching\cite{Fang2020BeyondLA}. Queries containing multiple interdependent constraints are often difficult to resolve through keyword overlap alone. For example, a request such as "suggest a high-protein dinner using chicken and spinach that can be prepared in under thirty minutes" contains several interconnected requirements that must be jointly understood and satisfied. Conventional retrieval systems frequently fail to capture such semantic relationships, leading to imprecise or incomplete results.
+
+Scalability presents a further challenge. As recipe collections and user populations grow, centralized, single-server architectures become a performance bottleneck, limiting throughput, availability, and resilience under load. Supporting production-scale deployments therefore requires distributed architectures capable of horizontal scaling and fault tolerance, rather than systems designed solely around single-node query processing.
+
+Natural language search and distributed system design have each been studied extensively, yet they are largely treated as independent problems. Recipe search systems that support flexible, conversational queries are rarely built atop infrastructure designed for horizontal scalability and fault tolerance, while distributed retrieval systems are seldom paired with the natural language understanding needed to interpret expressive, multi-constraint user input. This separation leaves a gap between systems that are linguistically flexible and systems that are operationally robust, a gap that becomes increasingly limiting as recipe platforms scale to larger catalogs and user bases.
+
+To address this gap, this paper presents \textbf{Epicure}, a distributed semantic search engine purpose-built for culinary discovery. Epicure integrates natural language understanding through a Large Language Model (LLM), semantic retrieval through dense vector embeddings, and a fault-tolerant microservice architecture. Specifically, Epicure employs Google Gemini to decompose natural language queries into structured search dimensions, and combines this with a hybrid retrieval framework that unifies metadata filtering and vector similarity search in Qdrant. To ensure scalability and reliability under production-scale workloads, the system adopts an orchestrator-based architecture comprising coordinator, LLM, ETL, and recipe nodes, with fault tolerance achieved through a Raft-inspired consensus algorithm. Together, these components allow users to interact with the system using natural, conversational language while preserving the scalability and reliability expected of production-grade infrastructure.
+
+\section{Problem Statement}
+\label{sec:problem_statement}
+\subsection{Fragmented and Cognitively Demanding Query Interfaces}
+Existing recipe search platforms require users to express a single search intent through multiple, disconnected filter controls (e.g., cuisine type, preparation time, dietary restriction, ingredient list). This decomposition of intent across separate UI components increases interaction overhead and does not scale well to queries involving several simultaneous constraints.
+
+\subsection{Inability of Lexical Retrieval to Capture Compound Semantic Intent}
+Keyword-based retrieval systems match queries to documents based on lexical overlap rather than semantic meaning. Consequently, queries that combine multiple interdependent constraints — such as ingredient availability, preparation time, and nutritional targets — are frequently misinterpreted or only partially satisfied, since no single keyword or filter field captures the relationship between these constraints.
+
+\subsection{Limited Scalability and Fault Tolerance of Centralized Architectures}
+Centralized, single-server recipe search systems are constrained in two respects: (1) throughput and latency degrade as the size of the recipe database and the volume of concurrent queries increase, and (2) the system as a whole is vulnerable to single points of failure, with no mechanism for maintaining availability when a node becomes unreachable or overloaded.
+
+Formally, this paper addresses the following problem: \textit{given a natural language recipe query expressing multiple, potentially interdependent constraints, design a search system that (i) accurately interprets user intent without requiring manual filter configuration, (ii) retrieves and ranks relevant recipes with high semantic precision, and (iii) operates reliably and scalably under distributed, high-concurrency, and partial-failure conditions}. Epicure is designed to jointly address all three sub-problems within a single, unified architecture, rather than treating natural language understanding and distributed system reliability as separate concerns.
+
+\section{Related Work}
+\label{sec:related_work}
+\subsection{Traditional Information Retrieval}
+Information retrieval systems have evolved substantially from lexical techniques such as BM25 and TF-IDF toward modern semantic retrievers \cite{Farivar2025SemanticSF}. Lexical methods determine relevance between a query and a document by matching keywords and terms directly. This approach can be problematic for natural language queries, as the most relevant document to a given query may not contain its exact wording; nonetheless, the simplicity of lexical matching typically yields fast retrieval \cite{Harris2025ComparingLA}.
+
+\subsection{Semantic Retrieval and Vector Search}
+Recent advances in transformer-based language models have enabled semantic retrieval systems that represent documents and queries as dense vector embeddings. Models such as BERT and Sentence-BERT encode contextual meaning, allowing retrieval systems to identify semantically related content even when explicit keyword overlap is limited \cite{Reimers2019SentenceBERTSE}. Compared to lexical methods, embedding-based retrieval has demonstrated substantial improvements in relevance and retrieval quality by capturing latent semantic relationships within text.
+
+\subsection{LLM-Based Query Understanding}
+Although semantic retrieval improves document matching, it does not directly address the challenge of interpreting complex user requests. Recent advances in Large Language Models (LLMs) have introduced new capabilities for query understanding and intent extraction. Unlike traditional search engines, which rely primarily on keyword matching, LLMs can interpret complex natural language requests and infer user intent from contextual information. This capability is particularly valuable in multi-constraint search scenarios, where users combine multiple requirements within a single query.
+
+\subsection{Query Decomposition}
+A growing body of research investigates query decomposition as a mechanism for improving retrieval effectiveness. Query decomposition breaks complex queries into simpler sub-queries, thereby improving retrieval precision and enabling more comprehensive answer generation \cite{Dong2025LeveragingLQ}. By isolating individual constraints within a query, retrieval systems can process each component independently and subsequently aggregate the results. 
+
+
+\subsection{Distributed Search and Coordination Systems}
+As the scale of modern information retrieval systems continues to grow, distributed architectures have become essential for maintaining performance, availability, and fault tolerance. To address these requirements, distributed systems commonly employ coordination and consensus mechanisms. The Raft consensus algorithm, for example, enables replicated state machines to maintain consistency across distributed nodes while providing fault tolerance through leader election and log replication \cite{Ongaro2014InSO}. Compared to earlier consensus protocols such as Paxos, Raft emphasizes understandability and ease of implementation, contributing to its widespread adoption in contemporary distributed systems.
+
+\subsection{Retrieval-Augmented Generation (RAG) Systems}
+RAG combines information retrieval techniques with Large Language Models (LLMs) to generate responses grounded in retrieved external knowledge sources, thereby improving factual accuracy, enabling access to up-to-date domain-specific information, and reducing hallucinations. Recent work has also explored RAG in food-related applications. NutriRAG, for example, presents a retrieval-augmented framework for classifying free-text food entries from dietary tracking applications \cite{Zhou2025NutriRAGUT}. While such work illustrates the value of RAG for food-related classification tasks, it does not address the distributed and fault-tolerant infrastructure required to scale retrieval-augmented systems for production-scale culinary search — a gap that Epicure directly addresses.
+
+\section{Proposed Approaches}
+\label{sec:proposed_approaches}
+
+\subsection{Natural Language Understanding}
+Epicure uses an LLM to interpret user intent before retrieval because recipe queries are usually written in natural language instead of fixed database filters. Queries like ``a quick healthy chicken dinner with no dairy'' contain several constraints that are difficult to capture with keyword search alone.
+
+Pure semantic search does not provide reliably strict constraints. For instance, a query such as ``quick vegan dinner'' may still correctly retrieve healthy dinner food but still exceed required cooking time or contain non-vegan ingredients. Metadata filtering will solve this problem by enforcing strict constraints, however, it requires the constraints to already be expressed in structured fields.
+
+LLM query decomposition solves both of these problems by rewriting the query into both semantic query and structured metadata filters. This design allows semantic searching to capture the user’s broad intent, while specific requirements are enforced by metadata filters. As a result, LLM plays a role as an interpretation layer to provide reliable retrieval.
+
+\subsection{Hybrid semantic and Metadata retrieval}
+Semantic vector search and metadata-based filtering each address complementary, but individually insufficient, aspects of recipe retrieval. Vector similarity search is effective at capturing the general intent and contextual meaning of a query, but it does not guarantee that hard constraints — such as a maximum cook time or the exclusion of allergens — are strictly enforced, since semantically similar recipes may still violate explicit requirements. Conversely, metadata filtering enforces such constraints precisely but cannot, on its own, interpret the nuanced or implicit aspects of a natural language request.
+
+Epicure therefore adopts a hybrid retrieval strategy: structured dimensions extracted during query decomposition are first applied as metadata filters to enforce mandatory constraints, after which the remaining candidates are ranked using vector similarity to capture semantic relevance. This staged approach ensures that retrieved recipes are both contextually relevant and constraint-compliant.
+
+\subsection{Distributed, Fault-Tolerant}
+\subsubsection{System Design}
+Epicure adopts a distributed microservice architecture organized into four functional clusters: the Coordinator cluster, the LLM cluster, the Recipe cluster, and the ETL cluster. The LLM, Recipe, and ETL clusters collectively constitute the worker node tier, while the Coordinator cluster serves as the system gateway, responsible for receiving client requests and orchestrating their execution across worker nodes.
+
+
+The responsibilities of each cluster are as follows. The Coordinator cluster manages request lifecycle, responsible for receiving user requests and calling other worker nodes for request processing. The LLM cluster participates in two pipeline stages:  query decomposition stage, in which convert the raw user query into structured search parameters by extracting constraints such as cuisine, meal type, cooking method, diet preference, main protein, maximum cooking time, and nutritional requirements; and answer generation, which converts retrieved search results into a readable response. The Recipe cluster maintains the vector recipe database and performs hybrid semantic retrieval against it. The ETL cluster transform raw recipe records into structured and metadata-rich representations through ingredient parsing, nutritional estimation, and metadata enrichment.
+
+
+The system is designed for asynchronous processing.  Each request progresses through four states across three sequential processing stages, each executed by a designated worker cluster under coordination of the active leader node: (1) LLM decomposition will break down the user intent in the request into formatted queries and filters for the recipe search using an LLM from the LLM node; (2) vector search, in which the Recipe cluster performs hybrid retrieval against the recipe collection using the decomposed parameters; and (3) answer generation, in which the recipe list is sent to the LLM node for produce the final answer with  human readable and understandable format.
+By splitting all the work to different nodes, the system keeps the coordinator lightweight while allowing multiple worker node instances to be deployed for overall scalability and fault tolerance.
+
+\subsubsection{Coordinator Node Design}
+The coordinator cluster will be responsible for controlling other worker nodes for requests processing and storing. Due to the being an essential part of the system, the coordinator cluster with multiple coordinators is proposed for enhancing fault tolerance. With this approach, every coordinator needs a memory to store user requests, and should be aware of other worker nodes and other coordinators.  A consensus algorithm is also applied only between the coordinator nodes to provide consistency with storing of user’s requests and processing work. Therefore, coordinators will have 2 main groups of interfaces for communication, one for client-server communication and one for inter-coordinator communication.
+
+\subsubsection{Raft-Inspired Consensus Protocol}
+The consensus is based on the Raft algorithm \cite{Ongaro2014InSO} with some modification. The nodes will still be in 1 of the 3 states follower, candidate or leader, with leader doing most of the work, similar to the original Raft consensus. However, the information which a node contains is different and the workflow is simpler. The broadcast of heartbeat and user request is now separate, with heartbeat sending out periodically while the request broadcast is only sent if there is a new request or an update to the request after a processing stage. For information involved in the consensus process, the coordinators will need a term, the current leader ID and request count.
+
+\subsubsection{Overview of the Epicure Architecture}
+The design principles described above are realized through a distributed, orchestrator-based architecture organized into four functional clusters: a Coordinator cluster, an LLM cluster, a Recipe cluster, and an ETL cluster. Each cluster supports horizontal scaling through the deployment of multiple worker node instances, with load distribution managed automatically by the active Coordinator leader. The high-level architecture is illustrated in Fig. 1. The complete implementation details of each cluster, including their internal pipelines and inter-service communication protocols, are presented in Section VI.
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/system_design_color.jpeg}
+    \caption{System Design}
+    \label{fig:process_flow}
+\end{figure*}
+
+\section{Dataset Construction and Preprocessing}
+\label{sec:dataset_collection}
+\subsection{Recipe Dataset}
+\subsubsection{Data source}
+The recipe corpus was sourced from the Recipe Box dataset \cite{lee2017recipeboxdataset}, a publicly available collection assembled via web scraping of three major culinary platforms---AllRecipes.com, Epicurious.com, and Food Network---using the open-source recipe-box scraper \cite{lee2017recipeboxgithub}. The dataset is distributed as three JSON files partitioned by source, each following the schema \{recipe\_id: \{title, ingredients, instructions, picture\_link\}\}. No additional crawling or scraping was performed in this work; the pre-collected JSON files were consumed directly as input to the preprocessing pipeline. The sources and their characteristics are summarised in Table I.
+
+\begin{table}[H]
+\caption{Recipe Dataset Sources and Characteristics}
+\label{tab:recipe_sources}
+\centering
+\footnotesize
+\begin{tabular}{p{0.8cm} p{1.5cm} p{4.2cm}}
+\toprule
+\textbf{ID} & \textbf{Origin} & \textbf{Characteristics} \\
+\midrule
+AR  & AllRecipes &
+Home-cooking focus; detailed step-by-step instructions. \\
+
+EPI & Epicurious &
+Professionally developed recipes; broader international cuisine range. \\
+
+FN  & Food Network &
+Television-style recipes; varied complexity and presentation styles. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Ingestion and Validation}
+The raw JSON files were ingested using the ijson streaming library to avoid memory exhaustion on large files and to provide fault tolerance against partial file truncation. Records failing validation — defined as missing or empty title fields, or non-dictionary entries — were discarded. The combined corpus yielded 112,146 valid recipe records after deduplication and filtering. File streaming via ijson provides an additional reliability benefit: a JSONDecodeError encountered mid-file terminates only the current record rather than the entire ingestion run, enabling partial recovery from corrupted source files. This property proved necessary during processing of the AllRecipes source file, which contained truncated JSON at line 587,781.
+
+\subsection{Nutritional Reference Dataset}
+\subsubsection{Source and Acquisition}
+ A nutritional reference dataset was required to support per-recipe macronutrient estimation. The Kaggle Food Nutrition Dataset \cite{dey2023foodnutrition} was selected for this purpose, providing per-100g nutritional values for 2,395 food items distributed across five CSV files (FOOD-DATA-GROUP1 through FOOD-DATA-GROUP5), which were merged into a unified DataFrame using the pandas library.
+
+\subsubsection{Preprocessing and Column Selection}
+ Following merging, unnamed index columns introduced during CSV export were removed. Seven nutritional attributes were retained, as listed in Table II. All values are expressed per 100g of food item. Sodium is stored in grams throughout the pipeline, consistent with the original dataset units, and converted to milligrams exclusively for display and dietary labelling purposes.
+
+ \begin{table}[H]
+\caption{Retained Nutritional Fields from Kaggle Food Nutrition Dataset}
+\label{tab:nutrition_fields}
+\centering
+\footnotesize
+\begin{tabular}{p{1.8cm} p{2.8cm} p{1.4cm}}
+\toprule
+\textbf{Field Name} & \textbf{Description} & \textbf{Unit} \\
+\midrule
+food & Food item identifier & -- \\
+
+Caloric Value & Energy content & kcal/100g \\
+
+Fat & Total fat & g/100g \\
+
+Carbohydrates & Total carbohydrates & g/100g \\
+
+Sugars & Total sugars & g/100g \\
+
+Protein & Protein content & g/100g \\
+
+Dietary Fiber & Dietary fibre & g/100g \\
+
+Sodium & Sodium content (stored in grams) & g/100g \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Semantic Text Passage Construction}
+Each food entry is transformed into a natural language text passage prior to embedding. This approach consistently outperforms the embedding of raw numeric vectors for ingredient-to-food matching, as it enables the encoder model to align query terms such as ``high protein ingredient'' or ``low-carb substitute'' with passages using semantically equivalent descriptors. Nutrient values are mapped to categorical labels using established dietary thresholds. Caloric content is classified across four levels ($<50$, $<100$, $<300$, and $\geq 300$ kcal per 100g). Protein, fat, and carbohydrate labels follow standard nutritional conventions. Sodium labels apply FDA serving-size definitions adapted to a per-100g basis (very low: $\leq 35$ mg; low: $\leq 140$ mg; moderate: $\leq 400$ mg; high: $>400$ mg). Diet suitability tags --- including keto, low-carb, muscle building, weight loss, high fibre, diabetic-friendly, heart-healthy, and low-sodium --- are appended based on threshold combinations. An example passage for raw chicken breast is as follows:
+
+\begin{quote}
+``Chicken Breast Raw is a high fat, low carb, high protein, low sodium food. It is moderate calorie with 299.0 kcal per serving, containing 16.1g fat, 36.3g protein, 0.0g carbohydrates, 0.0g fiber, 0.0g sugar, and 100.0mg sodium. Suitable for: muscle building, heart-healthy.''
+\end{quote}
+
+\subsubsection{Qdrant Collection Schema}
+The processed nutritional entries are indexed in a dedicated Qdrant collection named \texttt{nutrition} using the \texttt{all-MiniLM-L6-v2} sentence encoder (384-dimensional embeddings, cosine similarity metric). Eleven payload fields are indexed to support structured filtering during ingredient lookup, as detailed in Table III.
+
+\begin{table}[H]
+\caption{Nutrition Qdrant Collection Payload Index Schema}
+\label{tab:qdrant_schema}
+\centering
+\footnotesize
+\begin{tabular}{p{1.8cm} p{1.6cm} p{4.0cm}}
+\toprule
+\textbf{Field} & \textbf{Schema Type} & \textbf{Notes} \\
+\midrule
+
+food\_name & KEYWORD &
+Food item name; supports keyword fallback lookup \\
+
+calories & FLOAT &
+Energy content in kcal per 100g \\
+
+protein & FLOAT &
+Protein in g per 100g \\
+
+fat & FLOAT &
+Total fat in g per 100g \\
+
+carbs & FLOAT &
+Carbohydrates in g per 100g \\
+
+fiber & FLOAT &
+Dietary fibre in g per 100g \\
+
+sugar & FLOAT &
+Sugars in g per 100g \\
+
+sodium & FLOAT &
+Sodium in g per 100g \\
+
+is\_high\_protein & BOOL &
+True if protein $\geq 20$g per 100g \\
+
+is\_low\_carb & BOOL &
+True if carbohydrates $\leq 10$g per 100g \\
+
+is\_low\_calorie & BOOL &
+True if caloric value $\leq 100$ kcal per 100g \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ingredient Parsing}
+\subsubsection{Problem Formulation}
+Recipe ingredient fields contain free-form text such as ``2 1/2 cups all-purpose flour, sifted'' or ``1 (10.75 ounce) can condensed cream of chicken soup ADVERTISEMENT.'' Nutritional estimation requires the extraction of three structured fields per ingredient: a normalised ingredient name, a numeric quantity, and a canonical measurement unit. This task constitutes a rule-based information extraction problem distinct from named entity recognition, as the syntactic patterns are highly regular but the noise sources are domain-specific.
+
+\subsubsection{Parsing Pipeline}
+A deterministic six-stage parsing pipeline was implemented, as described in Table IV. The pipeline operates on each raw ingredient string in sequence, with each stage consuming a prefix of the remaining string and passing the residual to the next stage.
+
+\begin{table*}[!t]
+\caption{Ingredient Parsing Pipeline Stages}
+\label{tab:ingredient_pipeline}
+\centering
+\footnotesize
+\begin{tabular}{c l p{12cm}}
+\toprule
+\textbf{Stage} & \textbf{Operation} & \textbf{Description} \\
+\midrule
+
+1 & Pre-cleaning &
+Remove ADVERTISEMENT markers; strip trailing qualifiers (e.g., ``or to taste'', ``as needed'', ``optional''); remove size-hint parentheticals. \\
+
+2 & Number extraction &
+Parse leading numeric token, supporting integer, decimal, ASCII fraction (1/2), mixed number (1 1/2), Unicode fraction (½, ¾), and lower bound of ranges (2--3 cups). \\
+
+3 & Unit extraction &
+Match next token against a whitelist of 60+ canonical units using longest-match regex; unrecognised tokens are retained as part of the ingredient name. \\
+
+4 & Name extraction &
+Extract remaining string as ingredient name; strip preparation descriptors appearing after commas (diced, minced, softened); remove leading appearance adjectives (skinless, boneless). \\
+
+5 & Unit resolution &
+Resolve matched unit to canonical form; retrieve gram-equivalent for weight and volume units; classify countable units separately. \\
+
+6 & qty\_per\_100g &
+For weight and volume units with known gram equivalents, compute $100/\text{grams\_per\_unit}$ as a proportional normalisation factor for cross-recipe comparison. \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsubsection{Unit Classification and Gram Conversion}
+Measurement units are partitioned into two classes. Weight and volume units carry a known gram conversion factor and produce a non-null qty\_per\_100g value. Countable and package units (clove, can, stick, bunch, package, slice, and equivalents) lack a universal gram equivalent; their weight contribution is estimated from a curated lookup table of culinary defaults (e.g., one stick of butter = 113g, one standard can = 400g). Volume-to-weight conversion uses the density of water (1\,g/mL) as a universal approximation, which introduces a systematic overestimation of approximately 10--15\% for dense dry ingredients such as flour and granulated sugar. This is acknowledged as a known limitation of the current implementation.
+
+\subsection{Nutritional Value Estimation}
+\subsubsection{Lookup Methodology}
+For each parsed ingredient, a semantic similarity search is performed against the nutrition Qdrant collection. The query is constructed as ``Nutrition facts for \textless normalised\_ingredient\_name\textgreater:'' to align with the text passage format used during nutritional collection indexing, ensuring that query and passage embeddings occupy the same region of the vector space. A cosine similarity threshold of 0.55 is applied; ingredients scoring below this threshold are excluded from the nutritional total to prevent false matches from inflating macronutrient estimates. An ingredient-level cache backed by a persistent JSON file is maintained across processing runs. Normalised ingredient query strings serve as cache keys; both successful matches and confirmed non-matches are cached to prevent redundant network round-trips to the Qdrant server. With a corpus of 112,146 recipes averaging 10.6 ingredients each, the cache achieves an empirical hit rate exceeding 89\% after the first processing batch, reducing total Qdrant query volume by approximately one order of magnitude.
+
+\subsubsection{Gram Scaling}
+Upon retrieval of a matching nutritional entry, the per-100g values are scaled to the actual gram weight of the ingredient as used in the recipe. The scaled nutritional contribution for each nutrient $n$ is computed as:
+\[
+n_{\text{scaled}} = \left(\frac{\text{grams}}{100}\right) \times n_{\text{per\_100g}}
+\]
+
+Scaled contributions are summed across all matched ingredients to yield a whole-dish nutritional total. The resulting totals represent the aggregate nutritional content of all listed ingredients in their specified quantities and do not constitute a per-serving estimate; division by expected serving count is deferred to the query-time retrieval layer.
+
+\subsubsection{Coverage Metric}
+ A coverage metric is defined as the fraction of a recipe's attempted ingredients that were successfully matched and contributed to the nutritional total. Ingredients with no recoverable quantity are included in the denominator. Table V presents the distribution of coverage values across the processed corpus.
+
+\begin{table}[H]
+\caption{Nutritional Coverage Distribution Across Recipe Corpus}
+\label{tab:nutrition_coverage}
+\centering
+\footnotesize
+\begin{tabular}{l r r}
+\toprule
+\textbf{Coverage Range} & \textbf{Record Count} & \textbf{Percentage of Corpus} \\
+\midrule
+
+Zero (no matches) & 2,044  & 1.8\% \\
+Low (0--30\%)     & 1,321  & 1.2\% \\
+Moderate (30--70\%) & 15,041 & 13.4\% \\
+High ($>$70\%)     & 76,189 & 67.9\% \\
+
+\bottomrule
+\end{tabular}
+
+\vspace{2mm}
+\footnotesize Mean coverage: 81.3\% across 112,146 recipes
+\end{table}
+
+\subsubsection{Process Optimisation}
+The initial sequential implementation produced processing times of 30–45 minutes per 10,000-recipe batch due to cumulative network round-trip latency. Two optimisations were applied. First, all unique uncached ingredient names within a batch are embedded in a single vectorised call to the SentenceTransformer model, eliminating per-ingredient encoding overhead. Second, the resulting embedding vectors are dispatched to Qdrant concurrently via a Python ThreadPoolExecutor with 32 worker threads, reducing per-batch processing time to approximately 2–3 minutes. Cache pre-warming further reduces Qdrant query volume on subsequent batches, as previously observed ingredients are resolved from the in-memory cache without network access.
+
+\subsection{Metadata Enrichment}
+\subsubsection{Categorical Metadata Fields}
+Each recipe record is augmented with a set of categorical metadata fields derived from the recipe title, ingredient list, and instruction text through rule-based classification. These fields support structured filtering at query time independently of vector similarity. The complete field specification is provided in Table VI.
+
+\begin{table*}[!t]
+\caption{Recipe Metadata Field Specification}
+\label{tab:recipe_metadata}
+\centering
+\footnotesize
+\begin{tabular}{p{3.5cm} p{1.8cm} p{10.5cm}}
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\midrule
+
+title & string &
+Original recipe title, retained verbatim. \\
+
+meal\_type & keyword &
+One of: main\_course, dessert, soup\_stew, salad, breakfast, beverage,
+snack, bread\_pastry, sauce\_condiment, side\_dish; determined by title
+keyword matching with instruction fallback. \\
+
+cuisine & keyword &
+One of 16 cuisine classes (italian, asian, indian, french,
+mediterranean, mexican, american, greek, japanese, thai, chinese,
+spanish, german, british, latin\_american, middle\_eastern) or other;
+determined by weighted keyword scoring across title, instructions, and
+ingredients. \\
+
+cooking\_method & keyword list &
+Subset of: baked, stovetop, grilled, slow\_cooker, fried, steamed,
+pressure, no\_cook; detected by instruction phrase matching. \\
+
+main\_protein & keyword &
+Primary protein ingredient; title match takes precedence over frequency
+count across ingredient list; null if no recognized protein is detected. \\
+
+diet\_flags & keyword list &
+Subset of: vegetarian, vegan, gluten\_free, dairy\_free, nut\_free;
+derived by absence detection over ingredient sets. \\
+
+ingredient\_count & integer &
+Count of cleaned ingredient strings after noise removal. \\
+
+estimated\_cook\_time\_min & integer &
+First time expression extracted from instruction text via regex patterns;
+null if absent. \\
+
+has\_picture & boolean &
+True if the picture\_link field of the source record is non-empty. \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsubsection{Nutritional Metadata Fields}
+Per-recipe nutritional totals are stored as structured metadata alongside categorical fields. The \texttt{nutrition\_total} object contains eight
+fields (\texttt{calories}, \texttt{protein}, \texttt{fat},
+\texttt{carbs}, \texttt{fiber}, \texttt{sugar},
+\texttt{sodium} in grams, and a \texttt{sodium\_mg} convenience field).
+Three provenance fields \texttt{nutrition\_matched},
+\texttt{nutrition\_total\_ing}, and \texttt{nutrition\_coverage} are
+retained to enable data quality filtering at query time.
+
+\subsubsection{Main Protein Detection}
+The \texttt{main\_protein} field is derived through a two-stage heuristic. In the first stage, the recipe title is scanned against a list of 18 recognised protein tokens; the first match is returned as the primary protein. If no match is found in the title, the second stage counts the frequency of each protein token across all cleaned ingredient strings and returns the most frequently occurring protein. This approach corrects the behaviour of a naive first-match scan, which systematically returned chicken as the primary protein for any recipe containing a chicken-based ingredient regardless of its relative prominence.
+
+\subsection{Vector Store Indexing}
+\subsubsection{Text Embedding and Collection Configuration}
+Recipe records are embedded using the \texttt{all-MiniLM-L6-v2}
+sentence encoder, producing 384-dimensional dense vectors.
+Embeddings are computed from a structured natural language passage concatenating the recipe title, a bulleted ingredient list, and the full instruction text. The recipe Qdrant collection
+(\texttt{recipes\_nutrition}) is configured with cosine distance,
+consistent with the nutritional reference collection, to ensure
+cross-collection query compatibility.
+
+\subsubsection{Payload Flattening}
+Qdrant payload indexes resolve exclusively on top-level scalar keys. Nested structures must therefore be flattened prior to upsert. The \texttt{parsed\_ingredients} list of per-ingredient objects is decomposed into four parallel arrays \texttt{ingredients\_list}, \texttt{quantities\_list},
+\texttt{units\_list}, and \texttt{qty\_per\_100g\_list} to preserve index compatibility. The \texttt{nutrition\_total} dictionary is unpacked into dot-notation scalar keys (e.g.,
+\texttt{nutrition\_total.calories},
+\texttt{nutrition\_total.protein}), enabling FLOAT range filters such as \texttt{nutrition\_total.calories < 500} to function correctly at query time.
+
+\subsubsection{Deterministic Point Identifiers}
+Each Qdrant point is assigned a deterministic UUID derived from the recipe's original source identifier via MD5 hashing. This renders the upload operation idempotent: repeated invocations of the indexing procedure on the same dataset produce upsert operations on existing points rather than duplicate insertions, preventing unbounded collection growth during iterative pipeline development.
+
+\subsubsection{Indexed Payload Fields}
+Seventeen payload fields are indexed to support hybrid retrieval combining vector similarity with structured attribute filtering. Table VII summarises the indexed fields and their schema types.
+
+\begin{table}[H]
+\caption{Recipe Collection Payload Index Schema}
+\label{tab:payload_index_schema}
+\centering
+\footnotesize
+\begin{tabular}{p{2.8cm} p{1.8cm} p{3.8cm}}
+\toprule
+\textbf{Field(s)} & \textbf{Schema Type} & \textbf{Query Use Case} \\
+\midrule
+
+meal\_type, cuisine, main\_protein &
+KEYWORD &
+Exact-match categorical filters \\
+
+cooking\_method, diet\_flags &
+KEYWORD &
+Multi-value containment filters \\
+
+ingredients\_list &
+KEYWORD &
+Ingredient presence filters \\
+
+ingredient\_count, estimated\_cook\_time\_min &
+INTEGER &
+Numeric range filters \\
+
+has\_picture &
+BOOL &
+Binary presence filter \\
+
+nutrition\_total.calories through sodium\_mg &
+FLOAT &
+Macronutrient range filters \\
+
+nutrition\_coverage &
+FLOAT &
+Data completeness quality filter \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Query Time Deduplication}
+Prior to indexing, the enriched JSONL dataset was subjected to a title-based deduplication pass applied as a post-processing step following nutritional value estimation. For each unique recipe title, only the entry with the highest \texttt{nutrition\_coverage} value was retained; where coverage values were equal, the first encountered entry was kept. This approach ensures that each dish name appears at most once in the collection whilst preserving the record with the most complete nutritional metadata. A lightweight query-time safeguard is additionally maintained in the retrieval layer, wherein the vector search over-fetches results and retains only the highest-scoring entry per title, providing a secondary defence against any residual near-duplicate content.
+
+
+\section{Implementation Details}
+\label{sec:implementation_details}
+
+\subsection{LLM Node}
+\label{sec:llmnode}
+
+\subsubsection{Node Architecture}
+The LLM Node is implemented using a hybrid Java-Python architecture. The Java component is built with Spring Boot and exposes RESTful APIs to the Coordinator Node. Two main endpoints are provided:
+
+\begin{itemize}
+    \item ``/llm/decompose'', used to convert the user query into structured intent.
+    \item ``/llm/answer'', used to generate the final natural language response.
+\end{itemize}
+
+Internally, the Spring Boot service forwards requests to a Python FastAPI service. This separation allows the distributed system to maintain a consistent Java-based microservice interface while using Python libraries for LLM integration, prompt construction, and output parsing.
+
+\subsubsection{Query Decomposition}
+When the Coordinator Node receives a user search request, it sends the original query to the LLM Node as an "LLMRequest" object containing the "userQuery" field. The Python service then calls Google Gemini API to perform query decomposition. The model is prompted to return only valid JSON so that the output can be consumed directly by other nodes in the system.
+
+The decomposed intent contains the following main fields:
+
+\begin{itemize}
+    \item $\text{"recipe\_query"}$, a rewritten semantic query optimized for recipe retrieval.
+    \item $\text{"recipe\_filters"}$, which stores recipe constraints such as cuisine, meal type, cooking method, diet flags, main protein, maximum ingredients, and maximum cooking time.
+\end{itemize}
+
+This decomposition stage converts vague user input into a deterministic structure that can be processed by the Recipe Node.
+
+\subsubsection{Filtering Logic}
+LLM decomposes the user’s query into several constraints such as ``meal\_type'', ``cuisine'', ``cooking\_method'', ``main\_protein'', ``diet\_flags'', ``max\_cook\_time'', ``max\_ingredients'' and nutritional limits such as ``max\_calories'', ``min\_protein'', ``max\_carbs'', and ``max\_sodium''. It also collects ingredients the user already has and stores them in ``ingredients\_list''.
+
+For example, ``high protein low carb chicken dinner under 30 minutes'' may be converted into a semantic query such as ``high protein low carb chicken dinner'' with filters including ``main\_protein = chicken'', ``meal\_type = main\_course'', ``max\_cook\_time = 30'', ``min\_protein = 20'', and ``max\_carbs = 10''.
+
+This design allows language understanding to be independent of retrieval execution. The LLM handles the ambiguity of natural language and Recipe Node uses the retrieved filters for hard filtering and ranking.
+
+
+\subsubsection{Answer Generation}
+After the Recipe Node returns ranked search results, the Coordinator Node sends the complete user request to the LLM Node through the "/llm/answer" endpoint. At this stage, the request already contains the original "userQuery", the decomposed "recipeQuery", and the retrieved "recipeQueryResults". Therefore, the LLM Node does not perform another search; it only formats the retrieved results into a short natural language recommendation.
+
+The Spring Boot LLM service receives the request as JSON and forwards it to the Python FastAPI service. The Python service extracts the recipe result list, user query, and any available user ingredients. It then builds a compact prompt context from the top retrieved recipes. Each recipe is represented using its payload, score, cooking time, cooking method, diet flags, nutrition data, and matched user ingredients when available.
+
+The current implementation is designed to generate a concise recommendation rather than a full recipe explanation. The prompt explicitly instructs the model not to repeat full ingredient lists or full cooking instructions because these are already displayed separately in the user interface. Instead, the LLM produces a short paragraph of two to four sentences, mentioning the best one or two matching recipes and explaining why they fit the user’s request.
+
+This design keeps answer generation grounded in retrieved data while avoiding unnecessary duplication. The LLM is used as a presentation layer: it summarizes and explains the search results in a friendly way, but it does not invent new recipes, ingredients, or nutrition values. If no recipe is retrieved, the model is instructed to state that clearly and suggest broadening the search.
+
+
+\subsection{ETL Node}
+\label{sec:etlnode}
+The ETL Node functions as the data enrichment engine of the Epicure pipeline, transforming unstructured recipe submissions into metadata-rich vector representations suitable for indexing into the \texttt{recipes\_nutrition} Qdrant collection. The node is implemented as a dual-language microservice comprising a Java Spring Boot proxy layer that handles inter-service communication with the Coordinator, and a Python FastAPI backend that executes the four-stage enrichment pipeline.
+Access to the ingestion pipeline is restricted to administrators. Submitted recipes are forwarded by the Coordinator to the ETL Node's /process endpoint as a JSON payload using the following schema:
+
+\begin{lstlisting}[language={},basicstyle=\ttfamily]
+{
+  "dishes": [
+    {
+      "name":          "string",
+      "ingredients":   ["string"],
+      "cookingMethod": "string"
+    }
+  ]
+}
+\end{lstlisting}
+
+Ingredient strings are intentionally unstructured at ingestion time — for example, "2 cloves garlic, minced" — and the ETL pipeline's responsibility is to resolve this input into structured, filterable metadata and dense vector embeddings before the recipe enters the searchable corpus.
+
+\subsubsection{Stage 1 — Ingredient Parsing}
+Each raw ingredient string is processed through the deterministic six-stage parsing pipeline described in Section V-C, extracting a normalized ingredient name, numeric quantity, and canonical measurement unit. For the example string ``2 cloves garlic, minced'', the parser produces quantity: 2, unit: clove, name: garlic.
+
+\subsubsection{Stage 2 — Nutritional Estimation}
+For each parsed ingredient name, a semantic similarity query is issued against the \texttt{nutrition} collection in Qdrant Cloud to retrieve the closest matching nutritional reference entry, using the \texttt{all-MiniLM-L6-v2} encoder and a cosine similarity threshold of 0.55. Unit-to-gram conversion is performed using an internal lookup table of culinary weight equivalents. Scaled nutritional contributions are aggregated across all matched ingredients to produce a whole-recipe macronutrient total stored as dot-notation fields.
+
+\subsubsection{Stage 3 — Metadata Enrichment}
+The \texttt{/process} endpoint invokes the \texttt{to\_rag\_chunk()} function, which applies pattern matching and keyword analysis to detect and append five categorical metadata attributes: meal type, cuisine, dietary flags, estimated cook time, and main protein. Crucially, \texttt{enrich\_recipes.py} also exposes a \texttt{process()} function for offline batch execution, enabling the same enrichment logic to pre-load the corpus prior to deployment. This dual-mode design ensures metadata consistency between pre-loaded and runtime-ingested recipes.
+
+\subsubsection{Stage 4 — Embedding Generation and Output}
+A structured natural language passage is constructed from the enriched recipe fields and encoded into a 384-dimensional dense vector using a locally loaded \texttt{all-MiniLM-L6-v2} SentenceTransformer instance. Nested metadata is flattened into dot-notation scalar fields per the payload schema described in Section V-F. The final output---comprising the text passage, embedding vector, structured ingredient arrays, and nutritional metadata---is returned to the \textbf{Coordinator}, which forwards it to the \textbf{Recipe Node} for upsert into \texttt{recipes\_nutrition} via a deterministic MD5-derived UUID, ensuring idempotency on resubmission.
+
+\subsubsection{Relationship to Dataset Construction Pipeline}
+The runtime ETL pipeline is architecturally consistent with the bulk dataset construction pipeline presented in Section V, applying the same parsing logic, nutritional lookup methodology, metadata enrichment rules, embedding model, and payload schema across both execution modes. Two operational differences apply. First, the runtime pipeline processes individual recipe records rather than batched files and therefore does not employ the batch embedding optimisation or ThreadPoolExecutor parallelism described in Section V-D. Second, the ingredient-level nutritional cache maintained during bulk processing is not available at runtime; each nutritional lookup is issued as a live query against the \texttt{nutrition} collection. These trade-offs are acceptable given the low submission frequency expected of an administrator-restricted ingestion endpoint relative to the high-throughput demands of the search pipeline.
+
+
+\subsection{Recipe Node}
+\label{sec:recipenode}
+\subsubsection{Pipeline Overview}
+The retrieval process follows a four-stage pipeline: \emph{retrieval},\emph{hard filtering}, \emph{heuristic scoring}, and \emph{ranking}. A coarse-to-fine retrieval strategy is employed, whereby inexpensive filtering stages reduce the candidate space prior to ranking.
+
+\subsubsection{Semantic Retrieval}
+Upon receiving a search request, the Recipe Node constructs a semantic query based on the structured intent decomposed by the LLM Node. The query is embedded into a vector representation using the \texttt{all-MiniLM-L6-v2} model. Candidate recipes are selected according to the cosine similarity between the query embedding (A) and each recipe embedding (B):
+\[
+\mathrm{Similarity} = \cos(\theta) = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\| \, \|\mathbf{B}\|}
+\]
+The most relevant results constitute the initial candidate set. Communication between the Recipe Node and Qdrant Cloud is performed via gRPC, reducing latency and supporting concurrent retrieval requests. 
+
+\subsubsection{ Hard Filtering}
+Prior to scoring, retrieved candidates are processed through a set of filtering constraints.
+Recipes that violate any mandatory constraint are discarded, reducing computational cost of
+subsequent ranking operations. Filtering constraints include the following:
+\begin{itemize}
+    \item Dietary restrictions (e.g., vegan, vegetarian, gluten-free)
+    \item Maximum preparation time
+    \item Calorie limits
+    \item Required ingredients
+    \item Allergy exclusions
+\end{itemize}
+
+\subsubsection{Scoring}
+Remaining candidates are evaluated using a composite scoring function that integrates semantic similarity with user preferences. The final ranking score is computed as:
+\begin{align}
+\mathrm{Score}(r_i) &= 0.35 V_i + 0.20 I_i + 0.15 T_i \nonumber \\
+&\quad + 0.15 G_i + 0.10 C_i + 0.05 P_i
+\end{align}
+\begin{align*}
+V_i &: \text{Vector similarity score} \\
+I_i &: \text{Inventory match score} \\
+T_i &: \text{Title keyword overlap} \\
+G_i &: \text{Ingredient overlap score} \\
+C_i &: \text{Cook time preference score} \\
+P_i &: \text{Protein relevance score}
+\end{align*}
+
+\begin{itemize}
+    \item Vector Similarity: similarity score quantifies the semantic alignment between the query and recipe embeddings.
+    \item Inventory Match: comparing recipe ingredients with user's available ingredients using fuzzy string matching technique. Recipes requiring fewer missing ingredients will receive a higher score.
+    \item Title and Ingredient Overlap: these factors reward exact matching keywords between user requirements and retrieve metadata.
+    \item Cook-Time Preference: cook time is modeled as a sliding scale preference rather than a binary constraint, such that recipes closer to the user's desired preparation duration receive higher scores.
+    \item Protein Relevance: recipes containing the requested protein receive a small bonus to improve recommendation accuracy.
+\end{itemize}
+
+\subsubsection{Ranking}
+Retrieved recipes are sorted according to their composite score, and the top-K recipes are returned to the Coordinator Node. In addition to ranking, the Recipe Node computes a missing-ingredients list:
+\[
+\mathrm{Missing} = \mathrm{Ingredients}_{\mathrm{recipe}} - \mathrm{Inventory}_{\mathrm{user}}
+\]
+The resulting missing-ingredient set is forwarded to the Coordinator Node for downstream response generation. 
+
+\subsubsection{Recipe Ingestion}
+The Recipe Node is also responsible for maintaining the recipe knowledge base. New recipes are received from the ETL pipeline following data enrichment and nutritional analysis. For each recipe, an embedding is generated and inserted into the Qdrant collection via an upsert operation. This process ensures that newly added recipes become searchable with minimal latency while ensuring consistency within the vector store.
+
+
+\subsection{Coordinator}
+\label{sec:coordinator}
+The coordinator nodes are implemented using Java, and communicate via Restful APIs provided by Springboot Framework. The nodes contain 2 groups of API: 
+\begin{itemize}
+    \item Client communication
+    \item  Coordinator-to-coordinator communication
+\end{itemize}
+The coordinators also have a 
+\begin{itemize}
+    \item Hashmap to store user requests, 
+    \item A queue containing the request ID for the processing, 
+    \item Sets of other worker nodes 
+    \item Set of other coordinators. 
+\end{itemize}
+As well as information involved in the consensus process. A scheduler task is also created, running every 5 seconds to delete any expired request
+
+\subsubsection{Consensus}
+For the consensus between the coordinators, our implementation are followings:
+\begin{itemize}
+    \item The broadcast of the leader is set to be sent every second.
+    \item The follower coordinator will check the aliveness of the leader every 5 seconds.
+    \item Random timeout is between 1 to 2 seconds.
+    \item Vote request is sent as a POST request with a json format.
+    \item A heartbeat is implemented by calling an API from the other coordinator with a POST request containing the leader’s term, leader coordinator ID for redirection purposes, also sent as a POST request.
+\end{itemize}
+
+\subsubsection{Leader Coordinator}
+A new elected leader coordinator is initialized by the following:
+\begin{itemize}
+    \item Scheduler for broadcasting the heartbeat is now valid
+    \item Run the processing thread.
+    \item Loads all the request ID in the hash map to the queue for processing.
+\end{itemize}
+
+The processing thread is a loop that will run until it is demoted, taking the first request ID in the queue and using it to find other information of the request in the hash map and take it for processing. With the acquired information, the thread can determine the request state and continue the processing by calling a worker nodes API. The worker nodes will be chosen randomly between the same type (LLM or Recipe or ETL node).
+
+A retry scheduler is also utilized for failed processing calls of 5 seconds, with a maximum of 3 retries.
+
+\subsubsection{Follower Coordinator}
+A follower coordinator has a leader aliveness checking scheduler task. It is checked using a boolean, set to true by a heartbeat of the leader, valid for the next check. If the variable is false, the node will declare the leader as dead and become a candidate. 
+Followers also has an API for the leader to push request updates directly into the follower’s local HashMap.
+
+\subsubsection{Candidate Coordinator}
+As a coordinator becomes a candidate, a thread is created to continuously run to start an election until the node is set back to follower by the new leader. A random timeout of 1 to 2 seconds is also implemented for the random time wait.
+
+\subsection{Nginx Load Balancer}
+\label{sec:nginx}
+To ensure the system is highly available and to manage external traffic efficiently, an Nginx Layer-7 Load Balancer is deployed as the primary external entry point for all client requests. Operating at \texttt{epicure.localhost}, Nginx acts as a reverse proxy that distributes incoming HTTP traffic evenly across the instances within the Coordinator cluster using a round-robin routing strategy. By offloading the initial connection management to a dedicated web server, the system isolates internal microservices from direct external exposure and prevents any single Coordinator node from becoming a bottleneck during high-traffic periods. This component is crucial for enabling the horizontal scalability demonstrated in the stress test evaluation.
+
+\section{Evaluation and Experimental Results}
+\label{sec:evaluation}
+\subsection{Evaluation Methodology}
+Epicure is evaluated against three criteria that correspond to these problems: (1) the ability to accurately interpret and satisfy complex natural language queries, (2) the ability to maintain acceptable performance under concurrent load, and (3) the ability to recover from node failures without request loss.
+\subsubsection{}{Evaluation Metric --- Precision@K:}
+Search quality is measured using Precision@5 (P@5), defined as the fraction of the top-5 retrieved results that are judged relevant to the query:
+
+\[
+P@5 = \frac{|\{\text{relevant documents}\} \cap \{\text{top-5 retrieved documents}\}|}{5}
+\]
+
+This metric was selected because it directly reflects the end-user experience: a user submitting a complex culinary query is primarily concerned with the relevance of the first few results returned, rather than system-wide recall across the full recipe corpus. Relevance judgments were performed manually by the evaluation team against each test query, with a recipe considered relevant if it satisfied all explicitly stated constraints in the query (e.g., ingredient requirements, preparation time, dietary restrictions, and nutritional targets).
+
+\subsubsection{Baseline}
+Epicure is compared against a keyword-only baseline that issues queries directly to the same Qdrant collection without LLM-based decomposition or the six-factor composite scoring function. The baseline performs lexical matching over the recipe title and ingredient fields, representing the retrieval approach employed by conventional recipe search platforms. Both systems operate over the identical dataset, ensuring that observed differences in retrieval quality are attributable to the retrieval pipeline rather than differences in the underlying data.
+
+\subsubsection{Test Query Set}
+To evaluate retrieval performance comprehensively, a curated dataset of 150 test queries was constructed across three query categories representing the principal retrieval challenges identified in Section II: ingredient-based queries (combining multiple ingredient constraints), nutrition-focused queries (specifying macronutrient targets such as high-protein or low-calorie requirements), and time-constrained queries (specifying preparation time limits alongside other constraints). Query examples include complex, multi-constraint requests such as "suggest a high-protein dinner using chicken and spinach that can be prepared in under thirty minutes," which simultaneously require ingredient matching, nutritional filtering, and time constraint satisfaction.
+
+\subsection{Search Quality}
+Table VIII presents P@5 results for Epicure and the keyword-only baseline across the three query categories.
+\begin{table}[h]
+\centering
+\caption{Precision@5 Comparison Between Epicure and Keyword-Based Search}
+\label{tab:precision_comparison}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Query Type} & \textbf{Epicure (P@5)} & \textbf{Keyword Only (P@5)} \\
+\midrule
+Ingredient-based   & 0.85 & 0.45 \\
+Nutrition-focused & 0.90 & 0.35 \\
+Time-constrained  & 0.80 & 0.40 \\
+Average           & 0.85 & 0.40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Epicure achieves a mean P@5 of 0.85 across all query types, compared to 0.40 for the keyword-only baseline --- a relative improvement of 112.5\%. The most pronounced improvement is observed on nutrition-focused queries (+0.55), where keyword matching is least effective: a query specifying macronutrient targets such as ``high-protein'' or ``low-calorie'' does not correspond to any lexical field in the recipe corpus, and keyword search therefore cannot enforce nutritional constraints at retrieval time. Epicure's LLM decomposition step extracts these constraints as structured filter dimensions, enabling the Recipe Node to apply them as hard metadata filters before scoring, which accounts for the substantial precision gain in this category.
+
+Ingredient-based and time-constrained queries show comparable improvements (+0.40 each). In both cases, keyword matching partially succeeds --- ingredient names and preparation times do appear as lexical tokens in recipe metadata --- but fails to jointly satisfy all constraints simultaneously. Epicure's composite scoring function, which integrates vector similarity, inventory match, cook-time preference, and ingredient overlap across six weighted dimensions, enables multi-constraint satisfaction that single-field keyword matching cannot replicate.
+
+\subsection{Stress Test}
+To evaluate system behavior under high-concurrency production workloads, search requests were submitted simultaneously across five concurrency levels: 50, 100, 250, 500, and 1000 concurrent users. To bypass external LLM API rate limits during the stress test, the LLM Node was configured to return a cached, deterministic decomposition payload, isolating the performance evaluation to the distributed architecture and retrieval pipeline. Figure 2 reports mean response latency and error rate at each concurrency level.
+
+The system maintains a stable 100\% success rate up to 250 concurrent users, with latency scaling approximately linearly due to request queuing at the Coordinator nodes. This linear scaling behavior demonstrates that incoming requests arriving faster than the worker nodes can process them are effectively queued rather than dropped. At 1000 concurrent users, mean latency reaches 42.5 seconds with an error rate of 6.5\%, primarily due to client-side timeouts. These results indicate that the Nginx load balancer combined with the Coordinator's queuing mechanism provides graceful degradation under heavy load, maintaining high availability without triggering cascaded system failures.
+
+\subsection{Fault Tolerance}
+To rigorously evaluate the fault tolerance mechanism, a series of 20 controlled failure experiments were conducted by forcibly terminating the active leader node under live, concurrent request conditions. Table IX summarizes the leader election recovery time observed across these trials.
+
+\begin{table}[h]
+\centering
+\caption{Leader Node Recovery Time Across 20 Fault Tolerance Trials}
+\label{tab:leader_recovery}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Metric} & \textbf{Min (s)} & \textbf{Max (s)} & \textbf{Average (s)} \\
+\midrule
+Recovery Time & 4.3 & 6.1 & 5.15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The system consistently elected a new leader within an average of 5.15 seconds across all 20 trials, with a tight variance between 4.3 and 6.1 seconds. Most importantly, zero request loss was recorded across all trials. This absolute data retention is directly attributable to the state replication mechanism inherent in the Raft-inspired consensus algorithm: in-progress request states are replicated across follower nodes prior to acknowledgment. Consequently, the newly elected leader can seamlessly resume pipeline orchestration from a consistent state without discarding queued or partially processed requests.
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/chart.jpg}
+    \caption{System latency and error rate under concurrent load}
+    \label{fig:process_flow}
+\end{figure*}
+
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=5cm, height=4cm]{Sample .png}
+%     \caption{Sample Image}
+%     \label{fig:process_flow}
+% \end{figure}
+
+\section{ Conclusions and Future Work}
+\label{sec:conclusions}
+This paper presented Epicure, a distributed semantic search engine designed to address the fundamental limitations of conventional recipe retrieval systems. Three core problems were identified and formalized: the cognitive burden imposed by fragmented, filter-driven search interfaces; the inability of lexical retrieval to interpret complex, multi-constraint natural language queries; and the scalability and availability limitations of centralized, single-server architectures. Epicure addresses all three through the integration of LLM-based query decomposition, hybrid semantic retrieval, and a fault-tolerant distributed microservice architecture.
+
+The system employs Google Gemini to decompose free-form user queries into structured search dimensions, enabling the retrieval pipeline to enforce explicit constraints as metadata filters while simultaneously ranking candidates by semantic relevance through vector similarity search in Qdrant. A four-stage ETL pipeline enriches raw recipe submissions with parsed ingredient data, estimated nutritional values, categorical metadata, and dense vector embeddings, ensuring that newly ingested recipes are immediately searchable with the same retrieval precision as the pre-loaded corpus. Fault tolerance is achieved through a Raft-inspired consensus protocol among Coordinator nodes, providing automatic leader election and request state replication across the full pipeline.
+
+Experimental evaluation validated Epicure across three dimensions. Search quality experiments demonstrated a mean Precision@5 of 0.85 across ingredient-based, nutrition-focused, and time-constrained query categories, compared to 0.40 for a keyword-only baseline operating over the same corpus — a relative improvement of 112.5\%. Stress testing under concurrent loads of up to 1,000 simultaneous users confirmed that the system maintains a 100\% success rate up to 250 concurrent users, with graceful degradation beyond this threshold: at 1,000 concurrent users, an error rate of 6.5\% was observed, attributable primarily to client-side timeouts rather than cascaded system failures, demonstrating that the Nginx load balancer and Coordinator queuing mechanism effectively prevent service collapse under extreme load. Fault tolerance experiments conducted across 20 controlled leader node failure trials confirmed automatic leader re-election within an average of 5.15 seconds, with a tight recovery time variance of 4.3 to 6.1 seconds and zero request loss across all trials — validating the reliability of the Raft-inspired state replication mechanism under live failure conditions.
+Together, these results demonstrate that the integration of LLM-based natural language understanding with a fault-tolerant distributed retrieval architecture produces a search system that is simultaneously more semantically accurate, operationally resilient, and horizontally scalable than conventional keyword-based approaches.
+
+\subsection{Future Work}
+Several directions for future work have been identified to improve the practical deployability and retrieval quality of Epicure.
+
+The first thing to improve in the current system is the query decomposition process because the result after decomposition affects the retrieving result and answer generation. The LLM node is able to convert natural language queries to structured fields but the reliability and accuracy is not excellent. Therefore, adding a validating layer to check if the extracted fields match the accepted schema and to reject unsupported constraints before data retrieval in the database.  It should also be noted that the current implementation processes LLM requests sequentially on a single thread, a deliberate constraint imposed by the rate limits of the free-tier Google Gemini API used during development and evaluation. Migrating to a paid API tier or an alternatively hosted LLM would remove this bottleneck, enabling concurrent LLM request processing across multiple threads and substantially reducing the latency observed under high concurrency loads.
+
+Secondly, improving the ranking system to make the top suggested options more reliable. Incomplete metadata, noisy recipe text or missing nutritional values irritate the scoring process.
+Feedback-based ranking can be implemented, where user clicks, saved recipes or ratings are used to adjust result ordering. In addition, combining vector similarity, keyword matching and learned ranking models to improve precision.
+
+The scalability and fault tolerance of the system can also be strengthened. The current coordinator provides request replication and leader election, adding more complete monitoring, centralized logging, and performance metrics for each node type would help detecting failures more quickly. Besides, using health checks and selecting nodes based on latency awareness would improve load balancing among LLM, recipe and ETL nodes. These enhancements would make Epicure more robust under high request volume and easier to maintain in production environments.
+
+\section{Teamwork}
+\label{sec:teamwork}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\caption{Task Distribution}
+\label{tab:task_distribution}
+
+\begin{tabular}{|c|p{3.0cm}|p{3.4cm}|}
+\hline
+\textbf{No} & \textbf{Task Description} & \textbf{Member(s)} \\ \hline
+
+1 &
+System design &
+Le Ngoc Khang Duy, Tran Khanh Nam, Nguyen Xuan Anh Khoa, Nguyen Trong Huy, Nguyen Manh Khôi \\ \hline
+
+2 &
+Consensus implementation &
+Tran Khanh Nam \\ \cline{2-3}
+
+&
+Coordinator node implementation &
+Tran Khanh Nam \\ \hline
+
+3 &
+Evaluation &
+Le Ngoc Khang Duy \\ \hline
+
+4 &
+Data Construction and Preprocessing &
+Nguyen Manh Khoi \\ \hline
+
+5 &
+LLM decomposition and answer generation &
+Nguyen Trong Huy, Nguyen Manh Khoi \\ \hline
+
+6 &
+ETL implementation during code runtime &
+Nguyen Xuan Anh Khoa \\ \hline
+
+7 &
+Recipe semantic retrieval &
+Le Ngoc Khang Duy \\ \hline
+
+8 &
+Front-End, UI &
+Le Ngoc Khang Duy \\ \hline
+
+\end{tabular}
+\end{table}
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+
+ 
+ \end{document}
