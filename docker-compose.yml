@@ -20,6 +20,7 @@ services:
       - QDRANT_HOST=${QDRANT_HOST:-912cbc30-af65-4908-831a-4ea4091fdeb3.us-east-1-1.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-recipes_nutrition}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
     depends_on:
       - qdrant
@@ -35,6 +36,7 @@ services:
       - QDRANT_HOST=${QDRANT_HOST:-912cbc30-af65-4908-831a-4ea4091fdeb3.us-east-1-1.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-recipes_nutrition}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
     depends_on:
       - qdrant
@@ -50,6 +52,7 @@ services:
       - QDRANT_HOST=${QDRANT_HOST:-912cbc30-af65-4908-831a-4ea4091fdeb3.us-east-1-1.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-recipes_nutrition}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
     depends_on:
       - qdrant
@@ -65,6 +68,7 @@ services:
       - QDRANT_HOST=${QDRANT_HOST:-912cbc30-af65-4908-831a-4ea4091fdeb3.us-east-1-1.aws.cloud.qdrant.io}
       - QDRANT_GRPC_PORT=6334
       - QDRANT_TLS=true
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-recipes_nutrition}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
     depends_on:
       - qdrant
